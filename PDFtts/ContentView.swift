@@ -14,7 +14,7 @@ struct ContentView: View {
     @State private var sidebarVisible = false
     @State private var currentPage = 1
     @State private var totalPages = 0
-    @State private var zoomScale: CGFloat = 1.0
+    @State private var zoomScale: CGFloat = 0.8 // 默认稍微小一点确保适应屏幕
     @StateObject private var ttsService = EnhancedTTSService()
     @State private var pdfDocument: PDFDocument?
     
@@ -64,7 +64,7 @@ struct ContentView: View {
                                     .font(.title2)
                                     .foregroundColor(getReadingButtonColor())
                             }
-                            .disabled(selectedPDF == nil)
+                            .disabled(pdfDocument == nil)
                             
                             // 停止按钮
                             if ttsService.isPlaying || ttsService.isPaused {
@@ -200,7 +200,7 @@ struct ContentView: View {
                             // 重置PDF相关状态（选择新文件时需要重置）
                             currentPage = 1
                             totalPages = 0
-                            zoomScale = 1.0
+                            zoomScale = 0.8
                             
                             // 加载新文档
                             loadPDFDocument(url: url)
@@ -216,13 +216,20 @@ struct ContentView: View {
     }
     
     private func toggleReading() {
+        print("🎵 toggleReading被调用")
+        print("📄 pdfDocument存在: \(pdfDocument != nil)")
+        print("🔊 TTS状态: isPlaying=\(ttsService.isPlaying), isPaused=\(ttsService.isPaused)")
+        
         if ttsService.isPlaying {
             if ttsService.isPaused {
+                print("▶️ 恢复播放")
                 ttsService.resumeReading()
             } else {
+                print("⏸️ 暂停播放")
                 ttsService.pauseReading()
             }
         } else {
+            print("🔊 开始播放")
             startReading()
         }
     }
@@ -395,7 +402,7 @@ struct ContentView: View {
                             // 重置PDF相关状态（选择新文件时需要重置）
                             currentPage = 1
                             totalPages = 0
-                            zoomScale = 1.0
+                            zoomScale = 0.8
                             
                             // 加载新文档
                             loadPDFDocument(url: url)

@@ -13,6 +13,71 @@ struct ReadingProgressView: View {
     
     var body: some View {
         VStack(spacing: 8) {
+            // 语言选择提示 - 当需要确认语言时显示，或者语言未确认时始终显示
+            if ttsService.showLanguagePrompt || !ttsService.isLanguageConfirmed {
+                VStack(spacing: 12) {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                        Text("请先选择朗读语言")
+                            .font(.headline)
+                            .foregroundColor(.primary)
+                    }
+                    
+                    Text(ttsService.showLanguagePrompt ? "选择语言后将自动开始播放" : "请选择朗读语言")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    HStack(spacing: 16) {
+                        Button(action: {
+                            ttsService.selectedLanguage = "zh"
+                            if ttsService.showLanguagePrompt {
+                                Task {
+                                    await ttsService.confirmLanguageAndStartReading()
+                                }
+                            }
+                        }) {
+                            HStack {
+                                Text("🇨🇳")
+                                Text("中文")
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 10)
+                            .background(ttsService.selectedLanguage == "zh" ? Color.blue : Color.gray.opacity(0.2))
+                            .foregroundColor(ttsService.selectedLanguage == "zh" ? .white : .primary)
+                            .cornerRadius(8)
+                        }
+                        
+                        Button(action: {
+                            ttsService.selectedLanguage = "en"
+                            if ttsService.showLanguagePrompt {
+                                Task {
+                                    await ttsService.confirmLanguageAndStartReading()
+                                }
+                            }
+                        }) {
+                            HStack {
+                                Text("🇺🇸")
+                                Text("English")
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 10)
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                        }
+                    }
+                }
+                .padding()
+                .background(Color.orange.opacity(0.1))
+                .cornerRadius(12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                )
+                .padding(.horizontal, 16)
+            }
+            
             // 语言选择器 - 始终显示
             HStack {
                 Text("朗读语言:")
@@ -25,7 +90,9 @@ struct ReadingProgressView: View {
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .frame(maxWidth: 200)
-                .disabled(ttsService.isPlaying && !ttsService.isPaused) // 播放时禁用，暂停时可选择
+                .onChange(of: ttsService.selectedLanguage) { newLanguage in
+                    print("🔄 UI检测到语言切换: \(newLanguage)")
+                }
                 
                 Spacer()
             }

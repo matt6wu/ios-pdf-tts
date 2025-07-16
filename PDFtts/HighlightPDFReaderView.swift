@@ -25,9 +25,12 @@ struct HighlightPDFReaderView: UIViewRepresentable {
         pdfView.autoScales = true
         pdfView.backgroundColor = UIColor.systemGroupedBackground
         
-        // 自适应缩放设置
-        pdfView.minScaleFactor = 0.25
+        // 自适应缩放设置 - 更保守的范围
+        pdfView.minScaleFactor = 0.1
         pdfView.maxScaleFactor = 5.0
+        
+        // 设置缩放模式为适应宽度
+        pdfView.scaleFactor = pdfView.scaleFactorForSizeToFit
         
         // 设置委托
         pdfView.delegate = context.coordinator
@@ -55,9 +58,17 @@ struct HighlightPDFReaderView: UIViewRepresentable {
                 pdfView.go(to: page)
             }
             
-            // 延迟设置自适应缩放
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                pdfView.autoScales = true
+            // 延迟设置自适应缩放，确保完全适应屏幕
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                // 强制适应屏幕宽度
+                let fitScale = pdfView.scaleFactorForSizeToFit
+                pdfView.scaleFactor = fitScale * 0.95 // 稍微缩小5%确保不超出屏幕
+                pdfView.autoScales = false // 临时禁用自动缩放
+                
+                // 再次启用自动缩放
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    pdfView.autoScales = true
+                }
             }
         }
         
