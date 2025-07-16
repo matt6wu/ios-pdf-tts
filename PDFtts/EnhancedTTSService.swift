@@ -580,7 +580,7 @@ class EnhancedTTSService: NSObject, ObservableObject {
         }
         
         // 播放完成后检查是否需要自动翻页
-        if autoPageTurn, let getCurrentPage = getCurrentPage, let getTotalPages = getTotalPages {
+        if autoPageTurn && !shouldStop && isPlaying, let getCurrentPage = getCurrentPage, let getTotalPages = getTotalPages {
             let currentPage = getCurrentPage()
             let totalPages = getTotalPages()
             
@@ -589,6 +589,12 @@ class EnhancedTTSService: NSObject, ObservableObject {
             if currentPage < totalPages {
                 let nextPage = currentPage + 1
                 print("📄 自动翻页到第 \(nextPage) 页")
+                
+                // 再次检查是否应该停止
+                if shouldStop || !isPlaying {
+                    print("⚠️ 检测到停止信号，取消自动翻页")
+                    return
+                }
                 
                 // 显示翻页状态
                 await MainActor.run {
@@ -601,6 +607,12 @@ class EnhancedTTSService: NSObject, ObservableObject {
                 
                 // 短暂延迟等待翻页完成
                 try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5秒
+                
+                // 再次检查是否应该停止
+                if shouldStop || !isPlaying {
+                    print("⚠️ 翻页等待期间检测到停止信号，取消后续操作")
+                    return
+                }
                 
                 // 获取下一页文本并继续朗读
                 print("📖 准备获取第 \(nextPage) 页文本...")
