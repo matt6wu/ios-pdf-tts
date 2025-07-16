@@ -81,12 +81,19 @@ struct HighlightPDFReaderView: UIViewRepresentable {
             pdfView.document = document
         }
         
-        // 更新当前页
+        // 更新当前页 - 添加保护机制防止循环
         if let document = pdfView.document,
            let page = document.page(at: max(0, currentPage - 1)) {
             if pdfView.currentPage != page {
+                // 临时禁用委托以防止循环调用
+                let originalDelegate = pdfView.delegate
+                pdfView.delegate = nil
                 pdfView.go(to: page)
                 print("📱 更新PDF视图到第 \(currentPage) 页")
+                // 短暂延迟后恢复委托
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    pdfView.delegate = originalDelegate
+                }
             }
         }
         
@@ -123,10 +130,17 @@ struct HighlightPDFReaderView: UIViewRepresentable {
             if let document = sender.document,
                let currentPage = sender.currentPage {
                 let pageIndex = document.index(for: currentPage)
-                print("📖 页面变更: 从索引 \(pageIndex) 更新到第 \(pageIndex + 1) 页")
-                DispatchQueue.main.async {
-                    self.parent.currentPage = pageIndex + 1
-                    print("✅ 页面状态已更新: currentPage = \(self.parent.currentPage)")
+                let newPageNumber = pageIndex + 1
+                print("📖 页面变更: 从索引 \(pageIndex) 更新到第 \(newPageNumber) 页")
+                
+                // 防止重复更新相同页面
+                if self.parent.currentPage != newPageNumber {
+                    DispatchQueue.main.async {
+                        self.parent.currentPage = newPageNumber
+                        print("✅ 页面状态已更新: currentPage = \(self.parent.currentPage)")
+                    }
+                } else {
+                    print("📄 页面相同，跳过更新")
                 }
             } else {
                 print("❌ 无法获取文档或当前页面")

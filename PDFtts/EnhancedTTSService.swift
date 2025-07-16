@@ -7,6 +7,7 @@
 
 import Foundation
 import AVFoundation
+import UIKit
 
 class EnhancedTTSService: NSObject, ObservableObject {
     @Published var isPlaying = false
@@ -21,14 +22,25 @@ class EnhancedTTSService: NSObject, ObservableObject {
             if oldValue != selectedLanguage {
                 // 语言切换时停止当前播放并清理缓存
                 handleLanguageChange()
+                // 用户选择语言后标记为已确认（避免在didSet中修改其他@Published属性）
+                DispatchQueue.main.async {
+                    self.isLanguageConfirmed = true
+                }
             }
-            // 用户选择语言后标记为已确认
-            isLanguageConfirmed = true
         }
     }
     @Published var isLanguageConfirmed: Bool = true // 默认已确认，避免死循环
     @Published var showLanguagePrompt: Bool = false // 是否显示语言选择提示
+    @Published var showTTSInterface: Bool = false // 是否显示TTS控制界面
+    @Published var autoPageTurn: Bool = true // 自动翻页功能开关
+    @Published var currentReadingPage: Int = 0 // 当前朗读的页码
     private var pendingText: String = "" // 待播放的文本
+    
+    // PDF控制回调
+    var onPageChange: ((Int) -> Void)? // 翻页回调
+    var getCurrentPage: (() -> Int)? // 获取当前页
+    var getTotalPages: (() -> Int)? // 获取总页数
+    var getPageText: ((Int) -> String?)? // 获取指定页面文本
     
     private let chineseURL = "https://ttszh.mattwu.cc/tts"
     private let englishURL = "https://tts.mattwu.cc/api/tts"
@@ -157,12 +169,26 @@ class EnhancedTTSService: NSObject, ObservableObject {
     
     // 开始朗读
     func startReading(text: String) async {
-        guard !isProcessing else { return }
+        print("🔄 startReading 被调用，文本长度: \(text.count)")
+        print("📊 当前 isProcessing 状态: \(isProcessing)")
+        
+        guard !isProcessing else { 
+            print("⚠️ 已有朗读进程在运行，跳过此次调用")
+            return 
+        }
         
         // 直接开始播放，使用当前选择的语言
-        
+        print("🔄 设置 isProcessing = true")
         isProcessing = true
         shouldStop = false
+        
+        // 记录开始朗读的页码
+        if let getCurrentPage = getCurrentPage {
+            await MainActor.run {
+                currentReadingPage = getCurrentPage()
+            }
+            print("📖 开始朗读第 \(currentReadingPage) 页")
+        }
         
         // 创建分段
         let segments = createSegments(from: text)
@@ -175,6 +201,10 @@ class EnhancedTTSService: NSObject, ObservableObject {
             isPaused = false
             readingProgress = 0.0
             highlightedSentences = segments.map { $0.text }
+            
+            // 防止屏幕休眠
+            UIApplication.shared.isIdleTimerDisabled = true
+            print("🔒 已禁用屏幕自动休眠")
         }
         
         print("🔊 开始朗读，共 \(totalSegments) 段")
@@ -182,7 +212,14 @@ class EnhancedTTSService: NSObject, ObservableObject {
         // 开始播放分段
         await playSegments()
         
-        isProcessing = false
+        // 注意：在自动翻页的情况下，isProcessing 会在 playSegments 内部的自动翻页逻辑中处理
+        // 只有当不是自动翻页时才重置 isProcessing
+        if !autoPageTurn || !isPlaying {
+            isProcessing = false
+            print("🔄 重置 isProcessing = false")
+        } else {
+            print("🔄 自动翻页模式，保持 isProcessing 状态")
+        }
     }
     
     // 播放分段（修复顺序问题）
@@ -234,15 +271,171 @@ class EnhancedTTSService: NSObject, ObservableObject {
             await waitForPlaybackCompletion()
         }
         
+        // 播放完成后检查是否需要自动翻页
+        if autoPageTurn, let getCurrentPage = getCurrentPage, let getTotalPages = getTotalPages {
+            let currentPage = getCurrentPage()
+            let totalPages = getTotalPages()
+            
+            print("📖 当前页: \(currentPage)/\(totalPages)")
+            
+            if currentPage < totalPages {
+                let nextPage = currentPage + 1
+                print("📄 自动翻页到第 \(nextPage) 页")
+                
+                // 显示翻页状态
+                await MainActor.run {
+                    currentReadingText = "📄 正在翻页到第 \(nextPage) 页..."
+                    currentReadingPage = nextPage
+                    print("📱 调用页面变更回调: \(nextPage)")
+                    onPageChange?(nextPage)
+                }
+                print("📱 页面变更回调已调用")
+                
+                // 短暂延迟等待翻页完成
+                try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5秒
+                
+                // 获取下一页文本并继续朗读
+                print("📖 准备获取第 \(nextPage) 页文本...")
+                
+                // 验证当前页码是否已更新
+                let updatedCurrentPage = getCurrentPage()
+                print("📖 UI当前页码: \(updatedCurrentPage)")
+                
+                // 检查页面是否真的更新了
+                if updatedCurrentPage != nextPage {
+                    print("⚠️ 页面更新失败！期望第 \(nextPage) 页，但UI显示第 \(updatedCurrentPage) 页")
+                    // 更新状态显示问题
+                    await MainActor.run {
+                        currentReadingText = "⚠️ 页面更新失败，停止自动翻页"
+                    }
+                    try? await Task.sleep(nanoseconds: 1_000_000_000) // 1秒
+                    return
+                } else {
+                    print("✅ 页面更新成功，UI已显示第 \(nextPage) 页")
+                }
+                
+                // 尝试多次获取文本，确保PDF已完全加载
+                var nextPageText: String?
+                var retryCount = 0
+                let maxRetries = 3
+                
+                while retryCount < maxRetries {
+                    retryCount += 1
+                    print("📡 第 \(retryCount) 次尝试获取第 \(nextPage) 页文本...")
+                    nextPageText = getPageText?(nextPage)
+                    
+                    if let text = nextPageText, !text.isEmpty {
+                        print("✅ 成功获取第 \(nextPage) 页文本，长度: \(text.count)")
+                        print("📝 文本预览: \(text.prefix(200))...")
+                        
+                        // 确保TTS界面仍然显示，并更新状态
+                        await MainActor.run {
+                            showTTSInterface = true
+                            currentReadingText = "📄 正在自动翻页到第 \(nextPage) 页..."
+                            print("🎛️ 确保TTS界面在自动翻页时显示")
+                        }
+                        
+                        // 短暂显示翻页状态
+                        try? await Task.sleep(nanoseconds: 300_000_000) // 0.3秒
+                        
+                        // 重置 isProcessing 以允许新的朗读开始
+                        isProcessing = false
+                        print("🔄 自动翻页重置 isProcessing = false")
+                        
+                        await startReading(text: text)
+                        return // 不执行下面的完成逻辑
+                    } else {
+                        print("❌ 第 \(retryCount) 次尝试失败: 第 \(nextPage) 页文本为空或nil")
+                        print("📊 nextPageText 是否为 nil: \(nextPageText == nil)")
+                        if let text = nextPageText {
+                            print("📊 文本长度: \(text.count)")
+                        }
+                        
+                        if retryCount < maxRetries {
+                            print("⏳ 等待 0.5 秒后重试...")
+                            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒
+                        }
+                    }
+                }
+                
+                print("❌ 多次尝试后仍无法获取第 \(nextPage) 页文本，停止朗读")
+                print("📊 尝试获取的页码: \(nextPage)")
+                print("📊 PDF总页数: \(getTotalPages())")
+                
+                // 更新状态显示文本获取失败
+                await MainActor.run {
+                    currentReadingText = "❌ 无法获取第 \(nextPage) 页文本，朗读停止"
+                    isPlaying = false
+                    isPaused = false
+                    
+                    // 恢复屏幕自动休眠
+                    UIApplication.shared.isIdleTimerDisabled = false
+                    print("🔓 已恢复屏幕自动休眠")
+                }
+            } else {
+                print("📚 已到达最后一页，朗读完成")
+            }
+        }
+        
         // 播放完成
         await MainActor.run {
             isPlaying = false
             isPaused = false
             readingProgress = 1.0
             currentReadingText = ""
+            
+            // 恢复屏幕自动休眠
+            UIApplication.shared.isIdleTimerDisabled = false
+            print("🔓 已恢复屏幕自动休眠")
         }
         
         print("✅ 朗读完成")
+    }
+    
+    // 跳转到朗读页面
+    func goToReadingPage() {
+        if currentReadingPage > 0, let onPageChange = onPageChange {
+            print("📖 跳转到朗读页面: 第 \(currentReadingPage) 页")
+            onPageChange(currentReadingPage)
+        }
+    }
+    
+    // 启动TTS界面
+    func showTTSControls() {
+        print("🎛️ 启动TTS控制界面")
+        showTTSInterface = true
+    }
+    
+    // 关闭TTS界面
+    func hideTTSControls() {
+        print("🎛️ 关闭TTS控制界面")
+        
+        // 完全停止并重置所有状态
+        stopReading()
+        
+        // 重置界面状态
+        showTTSInterface = false
+        showLanguagePrompt = false
+        
+        // 重置所有TTS相关状态
+        currentReadingPage = 0
+        pendingText = ""
+        
+        // 清空所有缓存和任务
+        preloadedAudioCache.removeAll()
+        cancelAllPreloadTasks()
+        
+        // 确保完全重置
+        DispatchQueue.main.async {
+            self.isPlaying = false
+            self.isPaused = false
+            self.readingProgress = 0.0
+            self.currentSegmentIndex = 0
+            self.currentReadingText = ""
+            self.highlightedSentences = []
+        }
+        
+        print("✅ TTS控制界面已完全重置")
     }
     
     // 根据用户选择的语言加载音频
@@ -404,6 +597,12 @@ class EnhancedTTSService: NSObject, ObservableObject {
             self.highlightedSentences = []
             self.showLanguagePrompt = false
             self.pendingText = ""
+            self.currentReadingPage = 0 // 重置朗读页码
+            
+            // 恢复屏幕自动休眠
+            UIApplication.shared.isIdleTimerDisabled = false
+            print("🔓 已恢复屏幕自动休眠")
+            
             // 保持isLanguageConfirmed状态，避免每次都要重新选择
         }
     }
@@ -430,7 +629,7 @@ class EnhancedTTSService: NSObject, ObservableObject {
             
             if trimmedSentence.isEmpty { continue }
             
-            let sentenceWithPunctuation = trimmedSentence + "。"
+            let sentenceWithPunctuation = trimmedSentence + (selectedLanguage == "en" ? "." : "。")
             
             if currentSegment.count + sentenceWithPunctuation.count > actualMaxLength {
                 if !currentSegment.isEmpty && currentSegment.count > 10 {

@@ -73,11 +73,18 @@ struct PDFReaderView: UIViewRepresentable {
     }
     
     func updateUIView(_ pdfView: PDFView, context: Context) {
-        // 更新当前页
+        // 更新当前页 - 添加保护机制防止循环
         if let document = pdfView.document,
            let page = document.page(at: currentPage - 1) {
             if pdfView.currentPage != page {
+                // 临时禁用委托以防止循环调用
+                let originalDelegate = pdfView.delegate
+                pdfView.delegate = nil
                 pdfView.go(to: page)
+                // 短暂延迟后恢复委托
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    pdfView.delegate = originalDelegate
+                }
             }
         }
         
@@ -117,8 +124,13 @@ struct PDFReaderView: UIViewRepresentable {
             if let document = sender.document,
                let currentPage = sender.currentPage {
                 let pageIndex = document.index(for: currentPage)
-                DispatchQueue.main.async {
-                    self.parent.currentPage = pageIndex + 1
+                let newPageNumber = pageIndex + 1
+                
+                // 防止重复更新相同页面
+                if self.parent.currentPage != newPageNumber {
+                    DispatchQueue.main.async {
+                        self.parent.currentPage = newPageNumber
+                    }
                 }
             }
         }

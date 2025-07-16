@@ -90,9 +90,9 @@ struct ContentView: View {
                     // PDF内容区域
                     if let pdfURL = selectedPDF {
                         VStack(spacing: 0) {
-                            // 朗读进度显示
-                            if ttsService.isPlaying || ttsService.isPaused || !ttsService.currentReadingText.isEmpty {
-                                ReadingProgressView(ttsService: ttsService)
+                            // TTS控制界面
+                            if ttsService.showTTSInterface {
+                                ReadingProgressView(ttsService: ttsService, currentPage: currentPage)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
                             }
@@ -106,6 +106,9 @@ struct ContentView: View {
                                 pdfDocument: $pdfDocument,
                                 ttsService: ttsService
                             )
+                            .onAppear {
+                                setupTTSCallbacks()
+                            }
                         }
                     } else {
                         // 空状态 - 拖拽上传区域
@@ -216,22 +219,8 @@ struct ContentView: View {
     }
     
     private func toggleReading() {
-        print("🎵 toggleReading被调用")
-        print("📄 pdfDocument存在: \(pdfDocument != nil)")
-        print("🔊 TTS状态: isPlaying=\(ttsService.isPlaying), isPaused=\(ttsService.isPaused)")
-        
-        if ttsService.isPlaying {
-            if ttsService.isPaused {
-                print("▶️ 恢复播放")
-                ttsService.resumeReading()
-            } else {
-                print("⏸️ 暂停播放")
-                ttsService.pauseReading()
-            }
-        } else {
-            print("🔊 开始播放")
-            startReading()
-        }
+        print("🎛️ 启动TTS界面")
+        ttsService.showTTSControls()
     }
     
     private func startReading() {
@@ -269,6 +258,41 @@ struct ContentView: View {
         ttsService.stopReading()
     }
     
+    // 设置TTS服务的PDF控制回调
+    private func setupTTSCallbacks() {
+        ttsService.onPageChange = { newPage in
+            DispatchQueue.main.async {
+                currentPage = newPage
+            }
+        }
+        
+        ttsService.getCurrentPage = {
+            return currentPage
+        }
+        
+        ttsService.getTotalPages = {
+            return totalPages
+        }
+        
+        ttsService.getPageText = { pageNumber in
+            guard let document = pdfDocument else {
+                print("❌ PDF文档未加载")
+                return nil
+            }
+            
+            let pageIndex = pageNumber - 1
+            print("📖 获取第 \(pageNumber) 页文本 (索引: \(pageIndex))")
+            let text = document.extractText(from: pageIndex)
+            print("📝 获取到的文本长度: \(text?.count ?? 0)")
+            if let text = text, !text.isEmpty {
+                print("📝 文本预览: \(text.prefix(100))...")
+            }
+            return text
+        }
+        
+        print("✅ TTS回调函数已设置")
+    }
+    
     private func loadPDFDocument(url: URL) {
         print("🔄 开始加载PDF: \(url.path)")
         
@@ -304,24 +328,14 @@ struct ContentView: View {
         }
     }
     
-    // 获取朗读按钮图标（基于网页版逻辑）
+    // 获取TTS界面启动按钮图标
     private func getReadingButtonIcon() -> String {
-        if ttsService.isPlaying && ttsService.isPaused {
-            return "play.circle.fill"  // 已暂停 -> 显示播放图标
-        } else if ttsService.isPlaying {
-            return "pause.circle.fill"  // 正在播放 -> 显示暂停图标
-        } else {
-            return "speaker.wave.2.fill"  // 未开始 -> 显示朗读图标
-        }
+        return "speaker.wave.2.fill"  // 始终显示朗读图标，表示启动TTS界面
     }
     
-    // 获取朗读按钮颜色
+    // 获取TTS界面启动按钮颜色
     private func getReadingButtonColor() -> Color {
-        if ttsService.isPlaying {
-            return .orange
-        } else {
-            return .blue
-        }
+        return ttsService.showTTSInterface ? .orange : .blue
     }
     
     private func testTextExtraction() {
