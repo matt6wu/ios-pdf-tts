@@ -229,23 +229,35 @@ class EnhancedTTSService: NSObject, ObservableObject {
     
     // 更新锁屏媒体信息
     private func updateNowPlayingInfo() {
+        guard isPlaying else {
+            // 如果没有播放，清除媒体信息
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            return
+        }
+        
         var nowPlayingInfo = [String: Any]()
         
-        // 设置基本信息
+        // 设置基本信息 - 确保都是正确的类型
         nowPlayingInfo[MPMediaItemPropertyTitle] = "PDF TTS 阅读器"
-        nowPlayingInfo[MPMediaItemPropertyArtist] = "第 \(currentReadingPage) 页"
+        nowPlayingInfo[MPMediaItemPropertyArtist] = "第 \(max(currentReadingPage, 1)) 页"
         nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = "TTS朗读"
         
-        // 设置播放进度（必须设置duration才能显示控制器）
-        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = Double(currentSegmentIndex)
-        nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = Double(max(totalSegments, 1))
+        // 设置播放进度 - 确保是正确的数值类型
+        let elapsedTime = max(0.0, Double(currentSegmentIndex))
+        let duration = max(1.0, Double(totalSegments))
         
-        // 设置播放速率（这个很重要，决定了控制器的显示）
-        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying && !isPaused ? 1.0 : 0.0
+        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsedTime
+        nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = duration
         
-        // 设置播放队列信息
-        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackQueueCount] = totalSegments
-        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackQueueIndex] = currentSegmentIndex
+        // 设置播放速率 - 确保是正确的数值类型
+        let playbackRate = (isPlaying && !isPaused) ? 1.0 : 0.0
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = playbackRate
+        
+        // 设置播放队列信息 - 确保是正确的数值类型
+        if totalSegments > 0 {
+            nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackQueueCount] = NSNumber(value: totalSegments)
+            nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackQueueIndex] = NSNumber(value: currentSegmentIndex)
+        }
         
         // 设置语言信息
         let languageText = selectedLanguage == "zh" ? "中文朗读" : "English Reading"
@@ -260,13 +272,15 @@ class EnhancedTTSService: NSObject, ObservableObject {
             nowPlayingInfo[MPMediaItemPropertyAlbumArtist] = "准备朗读中..."
         }
         
-        // 设置媒体类型
-        nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
+        // 设置媒体类型 - 确保是正确的数值类型
+        nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = NSNumber(value: MPNowPlayingInfoMediaType.audio.rawValue)
         
-        // 更新到系统
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+        // 安全地更新到系统
+        DispatchQueue.main.async {
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+        }
         
-        print("📱 已更新锁屏媒体信息: 第\(currentReadingPage)页 - \(languageText) - 播放速率: \(isPlaying && !isPaused ? 1.0 : 0.0)")
+        print("📱 已更新锁屏媒体信息: 第\(currentReadingPage)页 - \(languageText) - 播放速率: \(playbackRate)")
     }
     
     // 设置音频中断处理
@@ -455,6 +469,8 @@ class EnhancedTTSService: NSObject, ObservableObject {
         isProcessing = true
         shouldStop = false
         
+        print("🔄 重置 shouldStop = false，允许异步任务执行")
+        
         // 记录开始朗读的页码
         if let getCurrentPage = getCurrentPage {
             await MainActor.run {
@@ -486,14 +502,16 @@ class EnhancedTTSService: NSObject, ObservableObject {
         print("🔊 开始朗读，共 \(totalSegments) 段")
         
         // 重新启用媒体控制中心命令
-        let commandCenter = MPRemoteCommandCenter.shared()
-        commandCenter.playCommand.isEnabled = true
-        commandCenter.pauseCommand.isEnabled = true
-        commandCenter.stopCommand.isEnabled = true
-        commandCenter.togglePlayPauseCommand.isEnabled = true
-        
-        // 再次更新媒体信息确保锁屏显示
-        updateNowPlayingInfo()
+        await MainActor.run {
+            let commandCenter = MPRemoteCommandCenter.shared()
+            commandCenter.playCommand.isEnabled = true
+            commandCenter.pauseCommand.isEnabled = true
+            commandCenter.stopCommand.isEnabled = true
+            commandCenter.togglePlayPauseCommand.isEnabled = true
+            
+            // 再次更新媒体信息确保锁屏显示
+            updateNowPlayingInfo()
+        }
         
         // 开始播放分段
         await playSegments()
@@ -617,15 +635,27 @@ class EnhancedTTSService: NSObject, ObservableObject {
                         print("✅ 成功获取第 \(nextPage) 页文本，长度: \(text.count)")
                         print("📝 文本预览: \(text.prefix(200))...")
                         
-                        // 确保TTS界面仍然显示，并更新状态
+                        // 检查是否应该继续自动翻页
+                        if shouldStop || !isPlaying {
+                            print("⚠️ 用户已停止播放或关闭界面，终止自动翻页")
+                            return
+                        }
+                        
+                        // 更新状态显示
                         await MainActor.run {
                             showTTSInterface = true
                             currentReadingText = "📄 正在自动翻页到第 \(nextPage) 页..."
-                            print("🎛️ 确保TTS界面在自动翻页时显示")
+                            print("🎛️ 自动翻页时保持TTS界面显示")
                         }
                         
                         // 短暂显示翻页状态
                         try? await Task.sleep(nanoseconds: 300_000_000) // 0.3秒
+                        
+                        // 再次检查是否应该继续
+                        if shouldStop || !isPlaying {
+                            print("⚠️ 在准备开始新朗读时检测到停止信号，终止操作")
+                            return
+                        }
                         
                         // 重置 isProcessing 以允许新的朗读开始
                         isProcessing = false
@@ -697,7 +727,10 @@ class EnhancedTTSService: NSObject, ObservableObject {
     
     // 关闭TTS界面
     func hideTTSControls() {
-        print("🎛️ 关闭TTS控制界面")
+        print("🎛️ 用户手动关闭TTS控制界面")
+        
+        // 设置停止标志，阻止所有异步任务继续执行
+        shouldStop = true
         
         // 完全停止并重置所有状态
         stopReading()
@@ -714,6 +747,9 @@ class EnhancedTTSService: NSObject, ObservableObject {
         preloadedAudioCache.removeAll()
         cancelAllPreloadTasks()
         
+        // 结束所有后台任务
+        endBackgroundTask()
+        
         // 确保完全重置
         DispatchQueue.main.async {
             self.isPlaying = false
@@ -722,9 +758,10 @@ class EnhancedTTSService: NSObject, ObservableObject {
             self.currentSegmentIndex = 0
             self.currentReadingText = ""
             self.highlightedSentences = []
+            self.isProcessing = false
         }
         
-        print("✅ TTS控制界面已完全重置")
+        print("✅ TTS控制界面已完全重置，所有异步任务已停止")
     }
     
     // 根据用户选择的语言加载音频
@@ -819,8 +856,8 @@ class EnhancedTTSService: NSObject, ObservableObject {
             if player.play() {
                 print("✅ 音频播放开始")
                 // 确保媒体信息在音频播放时更新
-                await MainActor.run {
-                    updateNowPlayingInfo()
+                DispatchQueue.main.async {
+                    self.updateNowPlayingInfo()
                 }
             } else {
                 print("❌ 音频播放启动失败")
@@ -835,8 +872,22 @@ class EnhancedTTSService: NSObject, ObservableObject {
     
     // 等待播放完成
     private func waitForPlaybackCompletion() async {
-        while let player = audioPlayer, player.isPlaying && !shouldStop {
+        var timeoutCount = 0
+        let maxTimeout = 600 // 60秒超时 (600 * 100ms)
+        
+        while let player = audioPlayer, player.isPlaying && !shouldStop && timeoutCount < maxTimeout {
             try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            timeoutCount += 1
+            
+            // 每10秒打印一次状态，防止卡死
+            if timeoutCount % 100 == 0 {
+                print("⏱️ 等待播放完成已超时 \(timeoutCount/10) 秒")
+            }
+        }
+        
+        if timeoutCount >= maxTimeout {
+            print("⚠️ 播放等待超时，强制停止")
+            stopReading()
         }
     }
     

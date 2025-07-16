@@ -107,10 +107,6 @@ struct ReadingProgressView: View {
             
             // 语言选择器 - 始终显示
             HStack {
-                Text("朗读语言:")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                
                 Picker("Language", selection: $ttsService.selectedLanguage) {
                     Text("中文").tag("zh")
                     Text("English").tag("en")
@@ -124,7 +120,7 @@ struct ReadingProgressView: View {
                 Spacer()
                 
                 // 播放控制按钮
-                HStack(spacing: 12) {
+                HStack(spacing: 16) {
                     // 主播放/暂停按钮
                     Button(action: {
                         if ttsService.isPlaying {
@@ -137,17 +133,18 @@ struct ReadingProgressView: View {
                             startReadingCurrentPage()
                         }
                     }) {
-                        HStack(spacing: 6) {
+                        HStack(spacing: 8) {
                             Image(systemName: getPlayButtonIcon())
                                 .font(.title2)
                             Text(getPlayButtonText())
-                                .font(.headline)
+                                .font(.subheadline)
+                                .fontWeight(.medium)
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
                         .background(getPlayButtonColor())
                         .foregroundColor(.white)
-                        .cornerRadius(25)
+                        .cornerRadius(20)
                     }
                     
                     // 停止按钮
@@ -155,52 +152,48 @@ struct ReadingProgressView: View {
                         Button(action: {
                             ttsService.stopReading()
                         }) {
-                            Image(systemName: "stop.fill")
-                                .font(.title2)
-                                .padding(12)
-                                .background(Color.red)
-                                .foregroundColor(.white)
-                                .cornerRadius(20)
+                            HStack(spacing: 6) {
+                                Image(systemName: "stop.fill")
+                                    .font(.title2)
+                                Text("停止")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(Color.red)
+                            .foregroundColor(.white)
+                            .cornerRadius(20)
                         }
                     }
                 }
                 .padding(.vertical, 8)
                 
-                // 自动翻页开关
-                Toggle("自动翻页", isOn: $ttsService.autoPageTurn)
-                    .font(.caption)
-                    .toggleStyle(SwitchToggleStyle(tint: .blue))
-                
-                // 后台播放提示
-                if ttsService.isPlaying || ttsService.isPaused {
-                    HStack(spacing: 4) {
-                        Image(systemName: "moon.fill")
-                            .font(.caption2)
-                            .foregroundColor(.orange)
-                        Text("支持后台播放和锁屏控制")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.top, 2)
-                }
                 
                 // 回到朗读页按钮 - 只在朗读且不在朗读页时显示
                 if ttsService.isPlaying && ttsService.currentReadingPage > 0 && ttsService.currentReadingPage != currentPage {
-                    Button(action: {
-                        ttsService.goToReadingPage()
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "book.circle.fill")
-                                .font(.caption)
-                            Text("第\(ttsService.currentReadingPage)页")
-                                .font(.caption)
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            ttsService.goToReadingPage()
+                        }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "book.circle.fill")
+                                    .font(.caption2)
+                                Text("回到第\(ttsService.currentReadingPage)页")
+                                    .font(.caption2)
+                                    .fontWeight(.medium)
+                                    .lineLimit(1)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(Color.green)
+                            .foregroundColor(.white)
+                            .cornerRadius(16)
                         }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.green)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
+                        Spacer()
                     }
+                    .padding(.top, 4)
                 }
             }
             .padding(.horizontal, 16)
