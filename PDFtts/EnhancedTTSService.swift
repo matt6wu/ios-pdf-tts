@@ -8,6 +8,8 @@
 import Foundation
 import AVFoundation
 import UIKit
+import MediaPlayer
+import BackgroundTasks
 
 class EnhancedTTSService: NSObject, ObservableObject {
     @Published var isPlaying = false
@@ -51,6 +53,7 @@ class EnhancedTTSService: NSObject, ObservableObject {
     private var shouldStop = false
     private var preloadedAudioCache: [Int: Data] = [:] // 预加载音频缓存
     private var preloadTasks: [Int: Task<Data?, Never>] = [:] // 预加载任务跟踪
+    private var backgroundTask: UIBackgroundTaskIdentifier = .invalid // 后台任务标识
     
     struct TextSegment {
         let text: String
@@ -61,6 +64,8 @@ class EnhancedTTSService: NSObject, ObservableObject {
     override init() {
         super.init()
         setupAudioSession()
+        setupAudioInterruptionHandling()
+        setupBackgroundTaskHandling()
     }
     
     // 处理语言切换
@@ -133,12 +138,280 @@ class EnhancedTTSService: NSObject, ObservableObject {
     private func setupAudioSession() {
         do {
             audioSession = AVAudioSession.sharedInstance()
-            try audioSession?.setCategory(.playback, mode: .default, options: [.defaultToSpeaker])
+            
+            // 配置音频会话支持后台播放
+            try audioSession?.setCategory(.playback, mode: .spokenAudio, options: [
+                .defaultToSpeaker,
+                .allowAirPlay,
+                .allowBluetoothA2DP,
+                .allowBluetooth
+            ])
+            
             try audioSession?.setActive(true)
-            print("✅ 音频会话设置成功")
+            print("✅ 音频会话设置成功（支持后台播放）")
+            
+            // 设置媒体控制中心
+            setupMediaControlCenter()
+            
         } catch {
             print("❌ 音频会话设置失败: \(error)")
         }
+    }
+    
+    // 设置媒体控制中心（锁屏控制）
+    private func setupMediaControlCenter() {
+        let commandCenter = MPRemoteCommandCenter.shared()
+        
+        // 清除所有现有的target
+        commandCenter.playCommand.removeTarget(nil)
+        commandCenter.pauseCommand.removeTarget(nil)
+        commandCenter.stopCommand.removeTarget(nil)
+        commandCenter.togglePlayPauseCommand.removeTarget(nil)
+        
+        // 启用播放命令
+        commandCenter.playCommand.isEnabled = true
+        commandCenter.playCommand.addTarget { [weak self] event in
+            print("🎵 锁屏播放命令被触发")
+            if self?.isPaused == true {
+                self?.resumeReading()
+                return .success
+            }
+            return .commandFailed
+        }
+        
+        // 启用暂停命令
+        commandCenter.pauseCommand.isEnabled = true
+        commandCenter.pauseCommand.addTarget { [weak self] event in
+            print("⏸️ 锁屏暂停命令被触发")
+            if self?.isPlaying == true && self?.isPaused == false {
+                self?.pauseReading()
+                return .success
+            }
+            return .commandFailed
+        }
+        
+        // 启用播放/暂停切换命令
+        commandCenter.togglePlayPauseCommand.isEnabled = true
+        commandCenter.togglePlayPauseCommand.addTarget { [weak self] event in
+            print("🔄 锁屏播放/暂停切换命令被触发")
+            guard let self = self else { return .commandFailed }
+            
+            if self.isPlaying {
+                if self.isPaused {
+                    self.resumeReading()
+                } else {
+                    self.pauseReading()
+                }
+                return .success
+            }
+            return .commandFailed
+        }
+        
+        // 启用停止命令
+        commandCenter.stopCommand.isEnabled = true
+        commandCenter.stopCommand.addTarget { [weak self] event in
+            print("🛑 锁屏停止命令被触发")
+            self?.stopReading()
+            return .success
+        }
+        
+        // 禁用其他不需要的命令
+        commandCenter.nextTrackCommand.isEnabled = false
+        commandCenter.previousTrackCommand.isEnabled = false
+        commandCenter.changePlaybackRateCommand.isEnabled = false
+        commandCenter.seekForwardCommand.isEnabled = false
+        commandCenter.seekBackwardCommand.isEnabled = false
+        commandCenter.skipForwardCommand.isEnabled = false
+        commandCenter.skipBackwardCommand.isEnabled = false
+        
+        print("✅ 媒体控制中心设置完成")
+    }
+    
+    // 更新锁屏媒体信息
+    private func updateNowPlayingInfo() {
+        var nowPlayingInfo = [String: Any]()
+        
+        // 设置基本信息
+        nowPlayingInfo[MPMediaItemPropertyTitle] = "PDF TTS 阅读器"
+        nowPlayingInfo[MPMediaItemPropertyArtist] = "第 \(currentReadingPage) 页"
+        nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = "TTS朗读"
+        
+        // 设置播放进度（必须设置duration才能显示控制器）
+        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = Double(currentSegmentIndex)
+        nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = Double(max(totalSegments, 1))
+        
+        // 设置播放速率（这个很重要，决定了控制器的显示）
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying && !isPaused ? 1.0 : 0.0
+        
+        // 设置播放队列信息
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackQueueCount] = totalSegments
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackQueueIndex] = currentSegmentIndex
+        
+        // 设置语言信息
+        let languageText = selectedLanguage == "zh" ? "中文朗读" : "English Reading"
+        nowPlayingInfo[MPMediaItemPropertyComments] = languageText
+        
+        // 如果有当前朗读文本，显示在副标题
+        if !currentReadingText.isEmpty {
+            let displayText = currentReadingText.count > 80 ? 
+                String(currentReadingText.prefix(80)) + "..." : currentReadingText
+            nowPlayingInfo[MPMediaItemPropertyAlbumArtist] = displayText
+        } else {
+            nowPlayingInfo[MPMediaItemPropertyAlbumArtist] = "准备朗读中..."
+        }
+        
+        // 设置媒体类型
+        nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
+        
+        // 更新到系统
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+        
+        print("📱 已更新锁屏媒体信息: 第\(currentReadingPage)页 - \(languageText) - 播放速率: \(isPlaying && !isPaused ? 1.0 : 0.0)")
+    }
+    
+    // 设置音频中断处理
+    private func setupAudioInterruptionHandling() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAudioInterruption),
+            name: AVAudioSession.interruptionNotification,
+            object: nil
+        )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAudioRouteChange),
+            name: AVAudioSession.routeChangeNotification,
+            object: nil
+        )
+        
+        print("✅ 音频中断处理设置完成")
+    }
+    
+    // 处理音频中断（电话、其他应用等）
+    @objc private func handleAudioInterruption(notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
+            return
+        }
+        
+        switch type {
+        case .began:
+            print("🔕 音频中断开始（电话、其他应用等）")
+            // 如果正在播放，暂停
+            if isPlaying && !isPaused {
+                pauseReading()
+            }
+            
+        case .ended:
+            print("🔊 音频中断结束")
+            // 检查是否应该恢复播放
+            if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
+                let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+                if options.contains(.shouldResume) {
+                    print("🔄 系统建议恢复播放")
+                    // 短暂延迟后恢复播放
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        if self.isPlaying && self.isPaused {
+                            self.resumeReading()
+                        }
+                    }
+                }
+            }
+            
+        @unknown default:
+            break
+        }
+    }
+    
+    // 处理音频路由变化（耳机拔出等）
+    @objc private func handleAudioRouteChange(notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
+            return
+        }
+        
+        switch reason {
+        case .oldDeviceUnavailable:
+            print("🎧 音频设备断开（耳机拔出等）")
+            // 耳机拔出时暂停播放
+            if isPlaying && !isPaused {
+                pauseReading()
+            }
+            
+        case .newDeviceAvailable:
+            print("🎧 新音频设备连接")
+            
+        default:
+            break
+        }
+    }
+    
+    // 设置后台任务处理
+    private func setupBackgroundTaskHandling() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appDidEnterBackground),
+            name: UIApplication.didEnterBackgroundNotification,
+            object: nil
+        )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appWillEnterForeground),
+            name: UIApplication.willEnterForegroundNotification,
+            object: nil
+        )
+        
+        print("✅ 后台任务处理设置完成")
+    }
+    
+    // 应用进入后台
+    @objc private func appDidEnterBackground() {
+        print("📱 应用进入后台")
+        
+        // 如果正在播放，启动后台任务
+        if isPlaying {
+            startBackgroundTask()
+        }
+    }
+    
+    // 应用即将进入前台
+    @objc private func appWillEnterForeground() {
+        print("📱 应用即将进入前台")
+        
+        // 结束后台任务
+        endBackgroundTask()
+    }
+    
+    // 启动后台任务
+    private func startBackgroundTask() {
+        endBackgroundTask() // 先结束之前的任务
+        
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "PDFTTSReading") {
+            // 任务即将过期时的处理
+            print("⏰ 后台任务即将过期")
+            self.endBackgroundTask()
+        }
+        
+        print("🔄 后台任务已启动: \(backgroundTask.rawValue)")
+    }
+    
+    // 结束后台任务
+    private func endBackgroundTask() {
+        if backgroundTask != .invalid {
+            print("⏹️ 结束后台任务: \(backgroundTask.rawValue)")
+            UIApplication.shared.endBackgroundTask(backgroundTask)
+            backgroundTask = .invalid
+        }
+    }
+    
+    // 清理通知监听
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        endBackgroundTask()
     }
     
     // 检测文本语言
@@ -205,9 +478,22 @@ class EnhancedTTSService: NSObject, ObservableObject {
             // 防止屏幕休眠
             UIApplication.shared.isIdleTimerDisabled = true
             print("🔒 已禁用屏幕自动休眠")
+            
+            // 更新锁屏媒体信息
+            updateNowPlayingInfo()
         }
         
         print("🔊 开始朗读，共 \(totalSegments) 段")
+        
+        // 重新启用媒体控制中心命令
+        let commandCenter = MPRemoteCommandCenter.shared()
+        commandCenter.playCommand.isEnabled = true
+        commandCenter.pauseCommand.isEnabled = true
+        commandCenter.stopCommand.isEnabled = true
+        commandCenter.togglePlayPauseCommand.isEnabled = true
+        
+        // 再次更新媒体信息确保锁屏显示
+        updateNowPlayingInfo()
         
         // 开始播放分段
         await playSegments()
@@ -235,6 +521,9 @@ class EnhancedTTSService: NSObject, ObservableObject {
                 currentSegmentIndex = index
                 currentReadingText = segment.text
                 readingProgress = Double(index) / Double(totalSegments)
+                
+                // 更新锁屏媒体信息
+                updateNowPlayingInfo()
             }
             
             print("🎵 播放第 \(index + 1)/\(totalSegments) 段: \(segment.text.prefix(50))...")
@@ -529,6 +818,10 @@ class EnhancedTTSService: NSObject, ObservableObject {
             // 开始播放
             if player.play() {
                 print("✅ 音频播放开始")
+                // 确保媒体信息在音频播放时更新
+                await MainActor.run {
+                    updateNowPlayingInfo()
+                }
             } else {
                 print("❌ 音频播放启动失败")
             }
@@ -554,6 +847,7 @@ class EnhancedTTSService: NSObject, ObservableObject {
             player.pause()
             DispatchQueue.main.async {
                 self.isPaused = true
+                self.updateNowPlayingInfo()
             }
         }
     }
@@ -565,6 +859,7 @@ class EnhancedTTSService: NSObject, ObservableObject {
             player.play()
             DispatchQueue.main.async {
                 self.isPaused = false
+                self.updateNowPlayingInfo()
             }
         }
     }
@@ -588,6 +883,9 @@ class EnhancedTTSService: NSObject, ObservableObject {
         preloadedAudioCache.removeAll()
         cancelAllPreloadTasks()
         
+        // 结束后台任务
+        endBackgroundTask()
+        
         DispatchQueue.main.async {
             self.isPlaying = false
             self.isPaused = false
@@ -602,6 +900,17 @@ class EnhancedTTSService: NSObject, ObservableObject {
             // 恢复屏幕自动休眠
             UIApplication.shared.isIdleTimerDisabled = false
             print("🔓 已恢复屏幕自动休眠")
+            
+            // 清除锁屏媒体信息
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            print("📱 已清除锁屏媒体信息")
+            
+            // 禁用媒体控制中心命令
+            let commandCenter = MPRemoteCommandCenter.shared()
+            commandCenter.playCommand.isEnabled = false
+            commandCenter.pauseCommand.isEnabled = false
+            commandCenter.stopCommand.isEnabled = false
+            commandCenter.togglePlayPauseCommand.isEnabled = false
             
             // 保持isLanguageConfirmed状态，避免每次都要重新选择
         }

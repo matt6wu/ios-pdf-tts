@@ -171,6 +171,19 @@ struct ReadingProgressView: View {
                     .font(.caption)
                     .toggleStyle(SwitchToggleStyle(tint: .blue))
                 
+                // 后台播放提示
+                if ttsService.isPlaying || ttsService.isPaused {
+                    HStack(spacing: 4) {
+                        Image(systemName: "moon.fill")
+                            .font(.caption2)
+                            .foregroundColor(.orange)
+                        Text("支持后台播放和锁屏控制")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.top, 2)
+                }
+                
                 // 回到朗读页按钮 - 只在朗读且不在朗读页时显示
                 if ttsService.isPlaying && ttsService.currentReadingPage > 0 && ttsService.currentReadingPage != currentPage {
                     Button(action: {
