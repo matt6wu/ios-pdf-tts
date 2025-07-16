@@ -9,12 +9,13 @@ import SwiftUI
 import PDFKit
 
 struct ContentView: View {
-    @State private var selectedPDF: URL? = Bundle.main.url(forResource: "today", withExtension: "pdf")
+    @State private var selectedPDF: URL? = nil
     @State private var showingDocumentPicker = false
     @State private var sidebarVisible = false
     @State private var currentPage = 1
     @State private var totalPages = 0
     @State private var zoomScale: CGFloat = 0.8 // 默认稍微小一点确保适应屏幕
+    @State private var localPDFPath: String = "" // 本地PDF路径
     @StateObject private var ttsService = EnhancedTTSService()
     @State private var pdfDocument: PDFDocument?
     
@@ -209,11 +210,21 @@ struct ContentView: View {
                     if let url = urls.first {
                         // 请求文件访问权限
                         if url.startAccessingSecurityScopedResource() {
+                            defer { url.stopAccessingSecurityScopedResource() }
+                            
                             // 停止当前播放
                             ttsService.stopReading()
                             
-                            // 设置新的PDF URL
-                            selectedPDF = url
+                            // 尝试将文件复制到本地
+                            if let localURL = copyPDFToLocal(url) {
+                                selectedPDF = localURL
+                                localPDFPath = localURL.path
+                                print("📁 使用本地PDF: \(localURL.path)")
+                            } else {
+                                selectedPDF = url
+                                localPDFPath = ""
+                                print("📁 使用原始PDF: \(url.path)")
+                            }
                             
                             // 重置PDF相关状态（选择新文件时需要重置）
                             currentPage = 1
@@ -221,7 +232,10 @@ struct ContentView: View {
                             zoomScale = 0.8
                             
                             // 加载新文档
-                            loadPDFDocument(url: url)
+                            loadPDFDocument(url: selectedPDF!)
+                            
+                            // 保存新的阅读状态
+                            saveReadingState()
                         } else {
                             print("❌ 无法访问文件: \(url)")
                         }
@@ -231,6 +245,20 @@ struct ContentView: View {
                 }
             }
         )
+        .onAppear {
+            // 应用启动时恢复阅读状态
+            restoreReadingState()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+            // 应用即将进入后台时保存状态
+            saveReadingState()
+            print("📱 应用即将进入后台，保存状态")
+        }
+        .onChange(of: currentPage) { newPage in
+            // 页面变化时保存状态
+            print("📖 页面变化: \(newPage)，正在保存状态...")
+            saveReadingState()
+        }
     }
     
     private func toggleReading() {
@@ -348,6 +376,90 @@ struct ContentView: View {
         }
     }
     
+    // MARK: - 状态保存和恢复
+    private func saveReadingState() {
+        guard let pdfPath = localPDFPath.isEmpty ? selectedPDF?.path : localPDFPath else { 
+            print("⚠️ 无法保存状态：PDF路径为空")
+            return 
+        }
+        
+        UserDefaults.standard.set(pdfPath, forKey: "LastPDFPath")
+        UserDefaults.standard.set(currentPage, forKey: "LastCurrentPage")
+        UserDefaults.standard.set(totalPages, forKey: "LastTotalPages")
+        UserDefaults.standard.set(zoomScale, forKey: "LastZoomScale")
+        
+        print("📚 已保存阅读状态: \(pdfPath) 第\(currentPage)页/共\(totalPages)页")
+    }
+    
+    private func restoreReadingState() {
+        guard let savedPath = UserDefaults.standard.string(forKey: "LastPDFPath") else { 
+            print("📚 没有保存的阅读状态，加载默认PDF")
+            // 如果没有保存的状态，加载默认PDF
+            if let defaultPDF = Bundle.main.url(forResource: "today", withExtension: "pdf") {
+                selectedPDF = defaultPDF
+                loadPDFDocument(url: defaultPDF)
+            }
+            return 
+        }
+        
+        let savedPage = UserDefaults.standard.integer(forKey: "LastCurrentPage")
+        let savedTotal = UserDefaults.standard.integer(forKey: "LastTotalPages")
+        let savedZoom = UserDefaults.standard.double(forKey: "LastZoomScale")
+        
+        print("📚 尝试恢复阅读状态:")
+        print("   - 路径: \(savedPath)")
+        print("   - 页数: \(savedPage)")
+        print("   - 总页数: \(savedTotal)")
+        print("   - 缩放: \(savedZoom)")
+        
+        // 检查本地文件是否存在
+        if FileManager.default.fileExists(atPath: savedPath) {
+            let url = URL(fileURLWithPath: savedPath)
+            selectedPDF = url
+            localPDFPath = savedPath
+            currentPage = savedPage > 0 ? savedPage : 1
+            totalPages = savedTotal
+            zoomScale = savedZoom > 0 ? CGFloat(savedZoom) : 0.8
+            
+            loadPDFDocument(url: url)
+            print("📚 已恢复阅读状态: \(savedPath) 第\(currentPage)页/共\(totalPages)页")
+        } else {
+            print("❌ 保存的PDF文件不存在: \(savedPath)")
+            // 文件不存在，清除保存的状态
+            UserDefaults.standard.removeObject(forKey: "LastPDFPath")
+            UserDefaults.standard.removeObject(forKey: "LastCurrentPage")
+            UserDefaults.standard.removeObject(forKey: "LastTotalPages")
+            UserDefaults.standard.removeObject(forKey: "LastZoomScale")
+            
+            // 加载默认PDF
+            if let defaultPDF = Bundle.main.url(forResource: "today", withExtension: "pdf") {
+                selectedPDF = defaultPDF
+                loadPDFDocument(url: defaultPDF)
+            }
+        }
+    }
+    
+    private func copyPDFToLocal(_ sourceURL: URL) -> URL? {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let fileName = sourceURL.lastPathComponent
+        let destinationURL = documentsPath.appendingPathComponent(fileName)
+        
+        do {
+            // 如果目标文件已存在，先删除
+            if FileManager.default.fileExists(atPath: destinationURL.path) {
+                try FileManager.default.removeItem(at: destinationURL)
+            }
+            
+            // 复制文件
+            try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+            print("📁 PDF已复制到本地: \(destinationURL.path)")
+            return destinationURL
+        } catch {
+            print("❌ 复制PDF失败: \(error)")
+            return nil
+        }
+    }
+    
     private func toggleSleepTimer() {
         if ttsService.showSleepTimer {
             ttsService.hideSleepTimerControls()
@@ -456,8 +568,16 @@ struct ContentView: View {
                             // 停止当前播放
                             ttsService.stopReading()
                             
-                            // 设置新的PDF URL
-                            selectedPDF = url
+                            // 尝试将文件复制到本地
+                            if let localURL = copyPDFToLocal(url) {
+                                selectedPDF = localURL
+                                localPDFPath = localURL.path
+                                print("📁 使用本地PDF: \(localURL.path)")
+                            } else {
+                                selectedPDF = url
+                                localPDFPath = ""
+                                print("📁 使用原始PDF: \(url.path)")
+                            }
                             
                             // 重置PDF相关状态（选择新文件时需要重置）
                             currentPage = 1
@@ -465,7 +585,10 @@ struct ContentView: View {
                             zoomScale = 0.8
                             
                             // 加载新文档
-                            loadPDFDocument(url: url)
+                            loadPDFDocument(url: selectedPDF!)
+                            
+                            // 保存新的阅读状态
+                            saveReadingState()
                         }
                     }
                 }
