@@ -14,25 +14,6 @@ struct ReadingProgressView: View {
     
     var body: some View {
         VStack(spacing: 8) {
-            // TTS控制界面标题栏
-            HStack {
-                Text("🎵 朗读控制")
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                
-                Spacer()
-                
-                // 关闭按钮
-                Button(action: {
-                    ttsService.hideTTSControls()
-                }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(.gray)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
             
             // 语言选择提示 - 当需要确认语言时显示，或者语言未确认时始终显示
             if ttsService.showLanguagePrompt || !ttsService.isLanguageConfirmed {
@@ -154,6 +135,37 @@ struct ReadingProgressView: View {
                                 .cornerRadius(20)
                         }
                     }
+                    
+                    // 状态图标
+                    if ttsService.isGeneratingTTS {
+                        // TTS生成中 - 动态沙漏图标
+                        Image(systemName: "hourglass")
+                            .font(.title2)
+                            .foregroundColor(.white)
+                            .rotationEffect(.degrees(ttsService.isGeneratingTTS ? 180 : 0))
+                            .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: ttsService.isGeneratingTTS)
+                            .padding(12)
+                            .background(Color.orange)
+                            .cornerRadius(20)
+                    } else if ttsService.isPlaying && !ttsService.isPaused {
+                        // 播放中 - 动态音波图标
+                        Image(systemName: "waveform")
+                            .font(.title2)
+                            .foregroundColor(.white)
+                            .scaleEffect(ttsService.isPlaying ? 1.2 : 1.0)
+                            .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: ttsService.isPlaying)
+                            .padding(12)
+                            .background(Color.blue)
+                            .cornerRadius(20)
+                    } else if ttsService.isPaused {
+                        // 暂停中 - 静态暂停图标
+                        Image(systemName: "pause.circle")
+                            .font(.title2)
+                            .foregroundColor(.white)
+                            .padding(12)
+                            .background(Color.orange)
+                            .cornerRadius(20)
+                    }
                 }
                 .padding(.vertical, 8)
                 
@@ -208,7 +220,7 @@ struct ReadingProgressView: View {
                             )
                             .id("textContent")
                     }
-                    .frame(maxHeight: 300)
+                    .frame(maxHeight: 400)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
                     .background(Color(UIColor.systemBackground))

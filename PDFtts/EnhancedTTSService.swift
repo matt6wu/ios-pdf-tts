@@ -35,6 +35,7 @@ class EnhancedTTSService: NSObject, ObservableObject {
     @Published var showLanguagePrompt: Bool = false // 是否显示语言选择提示
     @Published var showTTSInterface: Bool = false // 是否显示TTS控制界面
     @Published var autoPageTurn: Bool = true // 自动翻页功能开关
+    @Published var isGeneratingTTS: Bool = false // 是否正在生成TTS音频
     @Published var currentReadingPage: Int = 0 // 当前朗读的页码
     private var pendingText: String = "" // 待播放的文本
     
@@ -759,6 +760,7 @@ class EnhancedTTSService: NSObject, ObservableObject {
             self.currentReadingText = ""
             self.highlightedSentences = []
             self.isProcessing = false
+            self.isGeneratingTTS = false
         }
         
         print("✅ TTS控制界面已完全重置，所有异步任务已停止")
@@ -766,6 +768,11 @@ class EnhancedTTSService: NSObject, ObservableObject {
     
     // 根据用户选择的语言加载音频
     private func loadSegmentAudio(segment: TextSegment, retryCount: Int = 3) async -> Data? {
+        // 设置正在生成TTS状态
+        await MainActor.run {
+            isGeneratingTTS = true
+        }
+        
         // 完全基于用户选择的语言，不依赖segment.isEnglish
         let isEnglish = selectedLanguage == "en"
         let apiURL = isEnglish ? englishURL : chineseURL
@@ -820,6 +827,12 @@ class EnhancedTTSService: NSObject, ObservableObject {
                 }
                 
                 print("🎵 \(isEnglish ? "英文" : "中文")音频生成完成，大小: \(data.count / 1024) KB")
+                
+                // 重置正在生成TTS状态
+                await MainActor.run {
+                    isGeneratingTTS = false
+                }
+                
                 return data
                 
             } catch {
@@ -831,6 +844,11 @@ class EnhancedTTSService: NSObject, ObservableObject {
                     try? await Task.sleep(nanoseconds: UInt64(1000000000 * delaySeconds))
                 }
             }
+        }
+        
+        // 重置正在生成TTS状态
+        await MainActor.run {
+            isGeneratingTTS = false
         }
         
         return nil
@@ -929,6 +947,7 @@ class EnhancedTTSService: NSObject, ObservableObject {
         
         // 重置处理状态
         isProcessing = false
+        isGeneratingTTS = false
         
         // 清空预加载缓存和任务
         preloadedAudioCache.removeAll()

@@ -219,8 +219,13 @@ struct ContentView: View {
     }
     
     private func toggleReading() {
-        print("🎛️ 启动TTS界面")
-        ttsService.showTTSControls()
+        if ttsService.showTTSInterface {
+            print("🎛️ 关闭TTS界面")
+            ttsService.hideTTSControls()
+        } else {
+            print("🎛️ 启动TTS界面")
+            ttsService.showTTSControls()
+        }
     }
     
     private func startReading() {
