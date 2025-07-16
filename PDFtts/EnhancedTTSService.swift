@@ -82,15 +82,16 @@ class EnhancedTTSService: NSObject, ObservableObject {
         shouldStop = false
         
         // 创建分段
-        currentSegments = createSegments(from: text)
-        totalSegments = currentSegments.count
-        currentSegmentIndex = 0
+        let segments = createSegments(from: text)
         
         await MainActor.run {
+            currentSegments = segments
+            totalSegments = segments.count
+            currentSegmentIndex = 0
             isPlaying = true
             isPaused = false
             readingProgress = 0.0
-            highlightedSentences = currentSegments.map { $0.text }
+            highlightedSentences = segments.map { $0.text }
         }
         
         print("🔊 开始朗读，共 \(totalSegments) 段")

@@ -188,7 +188,7 @@ class HighlightPDFView: PDFView {
     }
     
     func updateHighlight() {
-        guard let ttsService = ttsService else { return }
+        guard ttsService != nil else { return }
         
         // 临时禁用高亮功能，后续可以优化
         hideHighlight()
@@ -295,7 +295,7 @@ extension PDFPage {
               let document = self.document else { return nil }
         
         if let range = pageText.range(of: text) {
-            let nsRange = NSRange(range, in: pageText)
+            let _ = NSRange(range, in: pageText)
             // 创建一个基本的选择对象
             return PDFSelection(document: document)
         }

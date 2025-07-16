@@ -9,7 +9,7 @@ import SwiftUI
 import PDFKit
 
 struct ContentView: View {
-    @State private var selectedPDF: URL? = URL(fileURLWithPath: "/Users/matt/Documents/app/PDFtts/today.pdf")
+    @State private var selectedPDF: URL? = Bundle.main.url(forResource: "today", withExtension: "pdf")
     @State private var showingDocumentPicker = false
     @State private var sidebarVisible = false
     @State private var currentPage = 1
@@ -184,29 +184,35 @@ struct ContentView: View {
         .fileImporter(
             isPresented: $showingDocumentPicker,
             allowedContentTypes: [.pdf],
-            allowsMultipleSelection: false
-        ) { result in
-            switch result {
-            case .success(let urls):
-                if let url = urls.first {
-                    // 停止当前播放
-                    ttsService.stopReading()
-                    
-                    // 设置新的PDF URL
-                    selectedPDF = url
-                    
-                    // 重置PDF相关状态（选择新文件时需要重置）
-                    currentPage = 1
-                    totalPages = 0
-                    zoomScale = 1.0
-                    
-                    // 加载新文档
-                    loadPDFDocument(url: url)
+            allowsMultipleSelection: false,
+            onCompletion: { result in
+                switch result {
+                case .success(let urls):
+                    if let url = urls.first {
+                        // 请求文件访问权限
+                        if url.startAccessingSecurityScopedResource() {
+                            // 停止当前播放
+                            ttsService.stopReading()
+                            
+                            // 设置新的PDF URL
+                            selectedPDF = url
+                            
+                            // 重置PDF相关状态（选择新文件时需要重置）
+                            currentPage = 1
+                            totalPages = 0
+                            zoomScale = 1.0
+                            
+                            // 加载新文档
+                            loadPDFDocument(url: url)
+                        } else {
+                            print("❌ 无法访问文件: \(url)")
+                        }
+                    }
+                case .failure(let error):
+                    print("❌ 文件选择失败: \(error)")
                 }
-            case .failure(let error):
-                print("Error selecting file: \(error)")
             }
-        }
+        )
     }
     
     private func toggleReading() {
@@ -257,12 +263,36 @@ struct ContentView: View {
     }
     
     private func loadPDFDocument(url: URL) {
+        print("🔄 开始加载PDF: \(url.path)")
+        
+        // 检查文件是否存在
+        if !FileManager.default.fileExists(atPath: url.path) {
+            print("❌ 文件不存在: \(url.path)")
+            return
+        }
+        
+        // 尝试加载PDF文档
         if let document = PDFDocument(url: url) {
             pdfDocument = document
             totalPages = document.pageCount
             print("✅ PDF加载成功，共 \(totalPages) 页")
+            
+            // 检查文档是否可以读取
+            if document.isLocked {
+                print("⚠️  PDF文档被锁定，可能需要密码")
+            }
         } else {
             print("❌ PDF加载失败: \(url.path)")
+            print("📋 尝试的URL: \(url)")
+            
+            // 检查资源是否可访问
+            do {
+                let isReachable = try url.checkResourceIsReachable()
+                print("📋 URL是否可访问: \(isReachable)")
+            } catch {
+                print("📋 检查资源可访问性失败: \(error)")
+            }
+            
             pdfDocument = nil
         }
     }

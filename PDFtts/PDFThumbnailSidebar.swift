@@ -6,7 +6,7 @@
 //
 
 import SwiftUI
-import PDFKit
+@preconcurrency import PDFKit
 
 struct PDFThumbnailSidebar: View {
     let pdfURL: URL?
@@ -56,9 +56,9 @@ struct PDFThumbnailSidebar: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 8)
                     }
-                    .onChange(of: currentPage) { newPage in
+                    .onChange(of: currentPage) { oldValue, newValue in
                         withAnimation(.easeInOut(duration: 0.3)) {
-                            proxy.scrollTo(newPage, anchor: .center)
+                            proxy.scrollTo(newValue, anchor: .center)
                         }
                     }
                 }
@@ -88,8 +88,8 @@ struct PDFThumbnailSidebar: View {
             }
         }
         .background(Color(UIColor.secondarySystemBackground))
-        .onChange(of: pdfURL) { newURL in
-            loadPDF(url: newURL)
+        .onChange(of: pdfURL) { oldValue, newValue in
+            loadPDF(url: newValue)
         }
         .onAppear {
             loadPDF(url: pdfURL)
@@ -128,7 +128,7 @@ struct PDFThumbnailSidebar: View {
     
     private func generateThumbnail(for page: PDFPage) async -> UIImage {
         return await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
+            DispatchQueue.global(qos: .userInitiated).async { [page] in
                 let pageSize = page.bounds(for: .mediaBox)
                 let scale: CGFloat = 150.0 / max(pageSize.width, pageSize.height)
                 let scaledSize = CGSize(
