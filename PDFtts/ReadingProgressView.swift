@@ -133,18 +133,12 @@ struct ReadingProgressView: View {
                             startReadingCurrentPage()
                         }
                     }) {
-                        HStack(spacing: 8) {
-                            Image(systemName: getPlayButtonIcon())
-                                .font(.title2)
-                            Text(getPlayButtonText())
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(getPlayButtonColor())
-                        .foregroundColor(.white)
-                        .cornerRadius(20)
+                        Image(systemName: getPlayButtonIcon())
+                            .font(.title2)
+                            .padding(12)
+                            .background(getPlayButtonColor())
+                            .foregroundColor(.white)
+                            .cornerRadius(20)
                     }
                     
                     // 停止按钮
@@ -152,18 +146,12 @@ struct ReadingProgressView: View {
                         Button(action: {
                             ttsService.stopReading()
                         }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "stop.fill")
-                                    .font(.title2)
-                                Text("停止")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            .background(Color.red)
-                            .foregroundColor(.white)
-                            .cornerRadius(20)
+                            Image(systemName: "stop.fill")
+                                .font(.title2)
+                                .padding(12)
+                                .background(Color.red)
+                                .foregroundColor(.white)
+                                .cornerRadius(20)
                         }
                     }
                 }
@@ -202,78 +190,37 @@ struct ReadingProgressView: View {
             .cornerRadius(8)
             .shadow(radius: 1)
             
-            // 进度条
-            if ttsService.isPlaying || ttsService.isPaused {
-                VStack(spacing: 4) {
-                    HStack {
-                        Text("朗读进度")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        
-                        Spacer()
-                        
-                        Text("\(ttsService.currentSegmentIndex + 1) / \(ttsService.totalSegments)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    ProgressView(value: ttsService.readingProgress, total: 1.0)
-                        .progressViewStyle(LinearProgressViewStyle(tint: .blue))
-                        .scaleEffect(y: 0.8)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color(UIColor.systemBackground))
-                .cornerRadius(8)
-                .shadow(radius: 2)
-            }
             
             // 当前朗读文本
             if !ttsService.currentReadingText.isEmpty {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Image(systemName: ttsService.isPaused ? "pause.circle.fill" : "speaker.wave.2.fill")
-                                .foregroundColor(ttsService.isPaused ? .orange : .blue)
-                                .font(.caption)
-                            
-                            Text("正在朗读")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            
-                            Spacer()
-                            
-                            // 语言标识
-                            if !ttsService.currentReadingText.isEmpty {
-                                Text(ttsService.selectedLanguage == "en" ? "EN" : "中文")
-                                    .font(.caption2)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(ttsService.selectedLanguage == "en" ? Color.green : Color.blue)
-                                    .foregroundColor(.white)
-                                    .cornerRadius(4)
-                            }
-                        }
-                        
+                ScrollViewReader { proxy in
+                    ScrollView {
                         Text(ttsService.currentReadingText)
                             .font(.body)
                             .foregroundColor(.primary)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 8)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 16)
                             .background(Color.yellow.opacity(0.2))
-                            .cornerRadius(8)
+                            .cornerRadius(12)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 8)
+                                RoundedRectangle(cornerRadius: 12)
                                     .stroke(Color.yellow.opacity(0.5), lineWidth: 1)
                             )
+                            .id("textContent")
+                    }
+                    .frame(maxHeight: 300)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color(UIColor.systemBackground))
+                    .cornerRadius(8)
+                    .shadow(radius: 2)
+                    .onChange(of: ttsService.currentReadingText) { _ in
+                        // 当文本变化时自动滚动到顶部
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            proxy.scrollTo("textContent", anchor: .top)
+                        }
                     }
                 }
-                .frame(maxHeight: 120)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color(UIColor.systemBackground))
-                .cornerRadius(8)
-                .shadow(radius: 2)
             }
         }
         .animation(.easeInOut(duration: 0.3), value: ttsService.isPlaying)
@@ -308,15 +255,6 @@ struct ReadingProgressView: View {
         }
     }
     
-    private func getPlayButtonText() -> String {
-        if ttsService.isPlaying && ttsService.isPaused {
-            return "继续"
-        } else if ttsService.isPlaying {
-            return "暂停"
-        } else {
-            return "播放"
-        }
-    }
     
     private func getPlayButtonColor() -> Color {
         if ttsService.isPlaying && !ttsService.isPaused {
