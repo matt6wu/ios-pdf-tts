@@ -29,6 +29,23 @@
 		C9CB5D642E27851000043CD9 /* PDFttsUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PDFttsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		C9CB5D852E279E9B00043CD9 /* Exceptions for "PDFttsUITests" folder in "PDFtts" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				today.pdf,
+			);
+			target = C9CB5D4C2E27850F00043CD9 /* PDFtts */;
+		};
+		C9CB5D862E279E9B00043CD9 /* Exceptions for "PDFttsUITests" folder in "PDFttsUITests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				today.pdf,
+			);
+			target = C9CB5D632E27851000043CD9 /* PDFttsUITests */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		C9CB5D4F2E27850F00043CD9 /* PDFtts */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -42,6 +59,10 @@
 		};
 		C9CB5D672E27851000043CD9 /* PDFttsUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C9CB5D852E279E9B00043CD9 /* Exceptions for "PDFttsUITests" folder in "PDFtts" target */,
+				C9CB5D862E279E9B00043CD9 /* Exceptions for "PDFttsUITests" folder in "PDFttsUITests" target */,
+			);
 			path = PDFttsUITests;
 			sourceTree = "<group>";
 		};
