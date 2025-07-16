@@ -170,6 +170,23 @@ struct ReadingProgressView: View {
                 .padding(.vertical, 8)
                 
                 
+                // 睡眠定时器显示 - 只在定时器激活时显示
+                if ttsService.sleepTimer > 0 {
+                    HStack {
+                        Image(systemName: "clock.fill")
+                            .font(.caption)
+                            .foregroundColor(.purple)
+                        
+                        Text(formatTime(ttsService.remainingTime))
+                            .font(.caption)
+                            .foregroundColor(.purple)
+                        
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 4)
+                }
+                
                 // 回到朗读页按钮 - 只在朗读且不在朗读页时显示
                 if ttsService.isPlaying && ttsService.currentReadingPage > 0 && ttsService.currentReadingPage != currentPage {
                     HStack {
@@ -267,6 +284,11 @@ struct ReadingProgressView: View {
         }
     }
     
+    private func formatTime(_ seconds: Int) -> String {
+        let minutes = seconds / 60
+        let remainingSeconds = seconds % 60
+        return String(format: "%02d:%02d", minutes, remainingSeconds)
+    }
     
     private func getPlayButtonColor() -> Color {
         if ttsService.isPlaying && !ttsService.isPaused {

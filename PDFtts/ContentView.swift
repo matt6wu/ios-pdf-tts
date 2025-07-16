@@ -66,6 +66,14 @@ struct ContentView: View {
                             }
                             .disabled(pdfDocument == nil)
                             
+                            // 睡眠定时器按钮
+                            Button(action: toggleSleepTimer) {
+                                Image(systemName: getSleepTimerIcon())
+                                    .font(.title2)
+                                    .foregroundColor(getSleepTimerColor())
+                            }
+                            .disabled(pdfDocument == nil)
+                            
                             // 停止按钮
                             if ttsService.isPlaying || ttsService.isPaused {
                                 Button(action: stopReading) {
@@ -93,6 +101,13 @@ struct ContentView: View {
                             // TTS控制界面
                             if ttsService.showTTSInterface {
                                 ReadingProgressView(ttsService: ttsService, currentPage: currentPage)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                            }
+                            
+                            // 睡眠定时器界面
+                            if ttsService.showSleepTimer {
+                                SleepTimerView(ttsService: ttsService)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
                             }
@@ -330,6 +345,32 @@ struct ContentView: View {
             }
             
             pdfDocument = nil
+        }
+    }
+    
+    private func toggleSleepTimer() {
+        if ttsService.showSleepTimer {
+            ttsService.hideSleepTimerControls()
+        } else {
+            ttsService.showSleepTimerControls()
+        }
+    }
+    
+    private func getSleepTimerIcon() -> String {
+        if ttsService.sleepTimer > 0 {
+            return "clock.fill"
+        } else {
+            return "clock"
+        }
+    }
+    
+    private func getSleepTimerColor() -> Color {
+        if ttsService.sleepTimer > 0 {
+            return .purple
+        } else if ttsService.showSleepTimer {
+            return .orange
+        } else {
+            return .gray
         }
     }
     

@@ -8,7 +8,7 @@
 		<string>background-processing</string>
 	</array>
 	<key>CFBundleDisplayName</key>
-	<string>PDF TTS Reader</string>
+	<string>MRead</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleName</key>

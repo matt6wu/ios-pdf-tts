@@ -36,6 +36,9 @@ class EnhancedTTSService: NSObject, ObservableObject {
     @Published var showTTSInterface: Bool = false // 是否显示TTS控制界面
     @Published var autoPageTurn: Bool = true // 自动翻页功能开关
     @Published var isGeneratingTTS: Bool = false // 是否正在生成TTS音频
+    @Published var sleepTimer: Int = 0 // 睡眠定时器(分钟)，0表示关闭
+    @Published var remainingTime: Int = 0 // 剩余时间(秒)
+    @Published var showSleepTimer: Bool = false // 是否显示睡眠定时器界面
     @Published var currentReadingPage: Int = 0 // 当前朗读的页码
     private var pendingText: String = "" // 待播放的文本
     
@@ -55,6 +58,7 @@ class EnhancedTTSService: NSObject, ObservableObject {
     private var preloadedAudioCache: [Int: Data] = [:] // 预加载音频缓存
     private var preloadTasks: [Int: Task<Data?, Never>] = [:] // 预加载任务跟踪
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid // 后台任务标识
+    private var sleepTimerTask: Task<Void, Never>? // 睡眠定时器任务
     
     struct TextSegment {
         let text: String
@@ -778,6 +782,56 @@ class EnhancedTTSService: NSObject, ObservableObject {
         print("✅ TTS控制界面已完全重置，所有异步任务已停止")
     }
     
+    // 睡眠定时器相关功能
+    func showSleepTimerControls() {
+        showSleepTimer = true
+    }
+    
+    func hideSleepTimerControls() {
+        showSleepTimer = false
+    }
+    
+    func startSleepTimer(minutes: Int) {
+        print("⏰ 启动睡眠定时器: \(minutes) 分钟")
+        sleepTimer = minutes
+        remainingTime = minutes * 60
+        showSleepTimer = false
+        
+        // 取消之前的定时器
+        sleepTimerTask?.cancel()
+        
+        // 启动新的定时器
+        sleepTimerTask = Task {
+            while remainingTime > 0 && !shouldStop {
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1秒
+                
+                if Task.isCancelled { break }
+                
+                await MainActor.run {
+                    remainingTime -= 1
+                }
+            }
+            
+            // 定时器到期或被取消
+            if remainingTime <= 0 && !shouldStop {
+                print("⏰ 睡眠定时器到期，自动停止播放")
+                await MainActor.run {
+                    stopReading()
+                    sleepTimer = 0
+                    remainingTime = 0
+                }
+            }
+        }
+    }
+    
+    func cancelSleepTimer() {
+        print("⏰ 取消睡眠定时器")
+        sleepTimerTask?.cancel()
+        sleepTimer = 0
+        remainingTime = 0
+        showSleepTimer = false
+    }
+    
     // 根据用户选择的语言加载音频
     private func loadSegmentAudio(segment: TextSegment, retryCount: Int = 3) async -> Data? {
         // 设置正在生成TTS状态
@@ -960,6 +1014,11 @@ class EnhancedTTSService: NSObject, ObservableObject {
         // 重置处理状态
         isProcessing = false
         isGeneratingTTS = false
+        
+        // 取消睡眠定时器
+        sleepTimerTask?.cancel()
+        sleepTimer = 0
+        remainingTime = 0
         
         // 清空预加载缓存和任务
         preloadedAudioCache.removeAll()
