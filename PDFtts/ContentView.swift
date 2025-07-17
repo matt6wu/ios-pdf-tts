@@ -45,7 +45,7 @@ struct ContentView: View {
                         
                         Spacer()
                         
-                        Text("PDF 电子阅读器")
+                        Text("MPDF")
                             .font(.headline)
                             .fontWeight(.medium)
                         
