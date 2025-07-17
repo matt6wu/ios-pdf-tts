@@ -18,6 +18,7 @@ struct ContentView: View {
     @State private var localPDFPath: String = "" // 本地PDF路径
     @StateObject private var ttsService = EnhancedTTSService()
     @State private var pdfDocument: PDFDocument?
+    @State private var showPageSlider = true // 控制滑块显示
     
     var body: some View {
         GeometryReader { geometry in
@@ -113,17 +114,67 @@ struct ContentView: View {
                                     .padding(.vertical, 4)
                             }
                             
-                            // PDF阅读器
-                            HighlightPDFReaderView(
-                                pdfURL: pdfURL,
-                                currentPage: $currentPage,
-                                totalPages: $totalPages,
-                                zoomScale: $zoomScale,
-                                pdfDocument: $pdfDocument,
-                                ttsService: ttsService
-                            )
-                            .onAppear {
-                                setupTTSCallbacks()
+                            // PDF阅读器 + 右侧滑块
+                            ZStack(alignment: .trailing) {
+                                // PDF阅读器
+                                HighlightPDFReaderView(
+                                    pdfURL: pdfURL,
+                                    currentPage: $currentPage,
+                                    totalPages: $totalPages,
+                                    zoomScale: $zoomScale,
+                                    pdfDocument: $pdfDocument,
+                                    ttsService: ttsService
+                                )
+                                .onAppear {
+                                    setupTTSCallbacks()
+                                }
+                                .onTapGesture(count: 2) {
+                                    // 双击显示/隐藏滑块
+                                    showPageSlider.toggle()
+                                }
+                                
+                                // 右侧页面滑块 - 只在显示时出现
+                                if totalPages > 1 && showPageSlider {
+                                    VStack {
+                                        Spacer()
+                                        
+                                        // 垂直滑块
+                                        VStack(spacing: 0) {
+                                            Slider(
+                                                value: Binding(
+                                                    get: { Double(totalPages - currentPage + 1) },
+                                                    set: { newValue in
+                                                        let newPage = totalPages - Int(newValue.rounded()) + 1
+                                                        if newPage != currentPage {
+                                                            currentPage = newPage
+                                                        }
+                                                    }
+                                                ),
+                                                in: 1...Double(totalPages),
+                                                step: 1
+                                            )
+                                            .rotationEffect(.degrees(-90))
+                                            .frame(width: 100, height: 100)
+                                            .accentColor(.blue)
+                                            
+                                            // 页码显示
+                                            Text("\(currentPage)/\(totalPages)")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                                .padding(.top, 4)
+                                        }
+                                        .padding(.trailing, 8)
+                                        .padding(.vertical, 20)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .fill(Color.secondary.opacity(0.1))
+                                        )
+                                        
+                                        Spacer()
+                                    }
+                                    .transition(.opacity)
+                                    .animation(.easeInOut(duration: 0.3), value: showPageSlider)
+                                }
                             }
                         }
                     } else {
