@@ -64,6 +64,18 @@ struct HighlightPDFReaderView: UIViewRepresentable {
                 let targetScale = fitScale * 0.9 // 90%屏幕宽度
                 pdfView.scaleFactor = targetScale
                 zoomScale = targetScale
+                
+                // 确保初始页面绑定正确
+                if let currentPDFPage = pdfView.currentPage,
+                   let pageIndex = pdfView.document?.index(for: currentPDFPage) {
+                    let actualPageNumber = pageIndex + 1
+                    if currentPage != actualPageNumber {
+                        DispatchQueue.main.async {
+                            currentPage = actualPageNumber
+                            print("📱 初始页面同步: currentPage = \(actualPageNumber)")
+                        }
+                    }
+                }
             }
         }
         
@@ -76,27 +88,19 @@ struct HighlightPDFReaderView: UIViewRepresentable {
             pdfView.document = document
         }
         
-        // 更新当前页 - 添加保护机制防止循环
+        // 简单的页面跳转 - 避免复杂的委托管理
         if let document = pdfView.document,
-           let page = document.page(at: max(0, currentPage - 1)) {
-            if pdfView.currentPage != page {
-                // 临时禁用委托以防止循环调用
-                let originalDelegate = pdfView.delegate
-                pdfView.delegate = nil
-                pdfView.go(to: page)
-                print("📱 更新PDF视图到第 \(currentPage) 页")
-                // 短暂延迟后恢复委托
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak pdfView] in
-                    guard let pdfView = pdfView else { return }
-                    pdfView.delegate = originalDelegate
-                }
+           let targetPage = document.page(at: max(0, currentPage - 1)) {
+            if pdfView.currentPage != targetPage {
+                pdfView.go(to: targetPage)
             }
         }
         
-        // 只在zoomScale明显不同时才更新缩放，避免微小差异导致的跳动
-        if abs(pdfView.scaleFactor - zoomScale) > 0.01 {
-            pdfView.scaleFactor = zoomScale
-        }
+        // 移除自动缩放更新 - 让用户完全控制缩放
+        // 注释掉这个逻辑，防止用户缩放被重置
+        // if abs(pdfView.scaleFactor - zoomScale) > 0.01 {
+        //     pdfView.scaleFactor = zoomScale
+        // }
         
         // 更新高亮
         pdfView.updateHighlight()
@@ -118,6 +122,16 @@ struct HighlightPDFReaderView: UIViewRepresentable {
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
                     self.parent.totalPages = document.pageCount
+                    
+                    // 立即同步当前页面
+                    if let currentPDFPage = sender.currentPage {
+                        let pageIndex = document.index(for: currentPDFPage)
+                        let actualPageNumber = pageIndex + 1
+                        if self.parent.currentPage != actualPageNumber {
+                            self.parent.currentPage = actualPageNumber
+                            print("📚 文档加载完成，页面同步: currentPage = \(actualPageNumber)")
+                        }
+                    }
                 }
             }
         }
@@ -294,14 +308,9 @@ class HighlightPDFView: PDFView {
         updateHighlight()
     }
     
-    // 确保页面变更时通知委托
+    // 简化页面跳转，减少崩溃风险
     override func go(to page: PDFPage) {
         super.go(to: page)
-        
-        // 手动触发页面变更通知
-        if let delegate = self.delegate as? HighlightPDFReaderView.Coordinator {
-            delegate.pdfViewDidChangePage(self)
-        }
     }
 }
 

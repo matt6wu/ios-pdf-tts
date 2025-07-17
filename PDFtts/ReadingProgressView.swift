@@ -194,19 +194,12 @@ struct ReadingProgressView: View {
                         Button(action: {
                             ttsService.goToReadingPage()
                         }) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "book.circle.fill")
-                                    .font(.caption2)
-                                Text("回到第\(ttsService.currentReadingPage)页")
-                                    .font(.caption2)
-                                    .fontWeight(.medium)
-                                    .lineLimit(1)
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(Color.green)
-                            .foregroundColor(.white)
-                            .cornerRadius(16)
+                            Image(systemName: "book.circle.fill")
+                                .font(.title2)
+                                .foregroundColor(.white)
+                                .padding(12)
+                                .background(Color.green)
+                                .cornerRadius(20)
                         }
                         Spacer()
                     }
