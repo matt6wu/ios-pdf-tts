@@ -22,15 +22,14 @@ struct HighlightPDFReaderView: UIViewRepresentable {
         // 配置PDFView
         pdfView.displayMode = .singlePageContinuous
         pdfView.displayDirection = .vertical
-        pdfView.autoScales = true
         pdfView.backgroundColor = UIColor.systemGroupedBackground
         
-        // 自适应缩放设置 - 更保守的范围
-        pdfView.minScaleFactor = 0.1
-        pdfView.maxScaleFactor = 5.0
+        // 禁用自动缩放，让用户控制缩放
+        pdfView.autoScales = false
         
-        // 设置缩放模式为适应宽度
-        pdfView.scaleFactor = pdfView.scaleFactorForSizeToFit
+        // 设置缩放范围
+        pdfView.minScaleFactor = 0.25
+        pdfView.maxScaleFactor = 5.0
         
         // 设置委托
         pdfView.delegate = context.coordinator
@@ -58,17 +57,13 @@ struct HighlightPDFReaderView: UIViewRepresentable {
                 pdfView.go(to: page)
             }
             
-            // 延迟设置自适应缩放，确保完全适应屏幕
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                // 强制适应屏幕宽度
+            // 设置初始缩放为屏幕宽度的90%
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak pdfView] in
+                guard let pdfView = pdfView else { return }
                 let fitScale = pdfView.scaleFactorForSizeToFit
-                pdfView.scaleFactor = fitScale * 0.95 // 稍微缩小5%确保不超出屏幕
-                pdfView.autoScales = false // 临时禁用自动缩放
-                
-                // 再次启用自动缩放
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    pdfView.autoScales = true
-                }
+                let targetScale = fitScale * 0.9 // 90%屏幕宽度
+                pdfView.scaleFactor = targetScale
+                zoomScale = targetScale
             }
         }
         
@@ -91,14 +86,15 @@ struct HighlightPDFReaderView: UIViewRepresentable {
                 pdfView.go(to: page)
                 print("📱 更新PDF视图到第 \(currentPage) 页")
                 // 短暂延迟后恢复委托
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak pdfView] in
+                    guard let pdfView = pdfView else { return }
                     pdfView.delegate = originalDelegate
                 }
             }
         }
         
-        // 更新缩放
-        if abs(pdfView.scaleFactor - zoomScale) > 0.1 {
+        // 只在zoomScale明显不同时才更新缩放，避免微小差异导致的跳动
+        if abs(pdfView.scaleFactor - zoomScale) > 0.01 {
             pdfView.scaleFactor = zoomScale
         }
         
@@ -119,7 +115,8 @@ struct HighlightPDFReaderView: UIViewRepresentable {
         
         func pdfViewDidChangeDocument(_ sender: PDFView) {
             if let document = sender.document {
-                DispatchQueue.main.async {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
                     self.parent.totalPages = document.pageCount
                 }
             }
@@ -135,7 +132,8 @@ struct HighlightPDFReaderView: UIViewRepresentable {
                 
                 // 防止重复更新相同页面
                 if self.parent.currentPage != newPageNumber {
-                    DispatchQueue.main.async {
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self = self else { return }
                         self.parent.currentPage = newPageNumber
                         print("✅ 页面状态已更新: currentPage = \(self.parent.currentPage)")
                     }
@@ -148,8 +146,13 @@ struct HighlightPDFReaderView: UIViewRepresentable {
         }
         
         func pdfViewDidChangeScale(_ sender: PDFView) {
-            DispatchQueue.main.async {
-                self.parent.zoomScale = sender.scaleFactor
+            // 只在缩放变化较大时更新，避免微小变化导致的循环更新
+            if abs(self.parent.zoomScale - sender.scaleFactor) > 0.01 {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    self.parent.zoomScale = sender.scaleFactor
+                    print("🔍 缩放更新: \(sender.scaleFactor)")
+                }
             }
         }
     }
@@ -262,7 +265,8 @@ class HighlightPDFView: PDFView {
             let convertedBounds = convert(bounds, from: page)
             
             // 更新高亮层
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
                 self.highlightOverlay?.frame = convertedBounds
                 self.highlightOverlay?.isHidden = false
                 
@@ -277,7 +281,8 @@ class HighlightPDFView: PDFView {
     }
     
     private func hideHighlight() {
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
             self.highlightOverlay?.isHidden = true
         }
     }
