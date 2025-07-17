@@ -11,6 +11,7 @@ struct ReadingProgressView: View {
     @ObservedObject var ttsService: EnhancedTTSService
     let currentPage: Int
     let languages = ["zh": "中文", "en": "English"]
+    @State private var textBoxHeight: CGFloat = 400 // 可调整的文本框高度
     
     var body: some View {
         VStack(spacing: 8) {
@@ -213,36 +214,62 @@ struct ReadingProgressView: View {
             .shadow(radius: 1)
             
             
-            // 当前朗读文本
+            // 当前朗读文本 - 可调整大小
             if !ttsService.currentReadingText.isEmpty {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        Text(ttsService.currentReadingText)
-                            .font(.body)
-                            .foregroundColor(.primary)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 16)
-                            .background(Color.yellow.opacity(0.2))
-                            .cornerRadius(12)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.yellow.opacity(0.5), lineWidth: 1)
-                            )
-                            .id("textContent")
-                    }
-                    .frame(maxHeight: 400)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(Color(UIColor.systemBackground))
-                    .cornerRadius(8)
-                    .shadow(radius: 2)
-                    .onChange(of: ttsService.currentReadingText) { _ in
-                        // 当文本变化时自动滚动到顶部
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            proxy.scrollTo("textContent", anchor: .top)
+                VStack(spacing: 0) {
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            Text(ttsService.currentReadingText)
+                                .font(.body)
+                                .foregroundColor(.primary)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 16)
+                                .background(Color.yellow.opacity(0.2))
+                                .cornerRadius(12)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.yellow.opacity(0.5), lineWidth: 1)
+                                )
+                                .id("textContent")
+                        }
+                        .frame(height: textBoxHeight)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color(UIColor.systemBackground))
+                        .cornerRadius(8)
+                        .shadow(radius: 2)
+                        .onChange(of: ttsService.currentReadingText) { _ in
+                            // 当文本变化时自动滚动到顶部
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                proxy.scrollTo("textContent", anchor: .top)
+                            }
                         }
                     }
+                    
+                    // 拖拽手柄
+                    HStack {
+                        Spacer()
+                        
+                        // 调整大小手柄
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.gray.opacity(0.5))
+                            .frame(width: 40, height: 4)
+                            .padding(.vertical, 8)
+                            .gesture(
+                                DragGesture()
+                                    .onChanged { value in
+                                        let newHeight = textBoxHeight + value.translation.height
+                                        // 限制最小高度100，最大高度600
+                                        textBoxHeight = min(max(newHeight, 100), 600)
+                                    }
+                            )
+                        
+                        Spacer()
+                    }
+                    .background(Color(UIColor.systemBackground))
                 }
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .shadow(radius: 2)
             }
         }
         .animation(.easeInOut(duration: 0.3), value: ttsService.isPlaying)
