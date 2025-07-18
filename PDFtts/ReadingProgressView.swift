@@ -227,19 +227,39 @@ struct ReadingProgressView: View {
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 16)
                                 .background(
-                                    LinearGradient(
-                                        gradient: Gradient(colors: [
-                                            Color.blue.opacity(0.1),
-                                            Color.cyan.opacity(0.05)
-                                        ]),
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
+                                    ZStack {
+                                        // 主背景 - 深色玻璃效果
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(Color.black.opacity(0.05))
+                                            .background(.ultraThinMaterial)
+                                        
+                                        // 微妙的渐变覆盖
+                                        LinearGradient(
+                                            gradient: Gradient(colors: [
+                                                Color.purple.opacity(0.08),
+                                                Color.blue.opacity(0.06),
+                                                Color.teal.opacity(0.04)
+                                            ]),
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    }
                                 )
-                                .cornerRadius(12)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Color.cyan.opacity(0.3), lineWidth: 1)
+                                        .stroke(
+                                            LinearGradient(
+                                                gradient: Gradient(colors: [
+                                                    Color.purple.opacity(0.3),
+                                                    Color.blue.opacity(0.2),
+                                                    Color.teal.opacity(0.1)
+                                                ]),
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            ),
+                                            lineWidth: 1.5
+                                        )
                                 )
                                 .id("textContent")
                         }
@@ -248,7 +268,8 @@ struct ReadingProgressView: View {
                         .padding(.vertical, 8)
                         .background(Color(UIColor.systemBackground))
                         .cornerRadius(8)
-                        .shadow(radius: 2)
+                        .shadow(color: Color.purple.opacity(0.1), radius: 8, x: 0, y: 4)
+                        .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
                         .onChange(of: ttsService.currentReadingText) { _ in
                             // 当文本变化时自动滚动到顶部
                             withAnimation(.easeInOut(duration: 0.3)) {

@@ -105,10 +105,10 @@ class EnhancedTTSService: NSObject, ObservableObject {
     
     // 开始预加载下一段（支持跨页面预加载）
     private func startPreloadNext(index: Int) {
+        guard isPlaying && !shouldStop else { return }
+        
         // 如果当前页还有下一段，预加载当前页的下一段
         if index < currentSegments.count {
-            guard isPlaying && !shouldStop else { return }
-            
             // 避免重复预加载
             guard preloadTasks[index] == nil && preloadedAudioCache[index] == nil else { return }
             
@@ -132,8 +132,10 @@ class EnhancedTTSService: NSObject, ObservableObject {
                 }
             }
         }
-        // 如果是当前页最后一段，且开启了自动翻页，预加载下一页第一段
-        else if autoPageTurn && isPlaying && !shouldStop {
+        
+        // 检查是否是最后一段或倒数第二段，如果是且开启了自动翻页，预加载下一页第一段
+        let isLastOrSecondLast = (index >= currentSegments.count - 2)
+        if isLastOrSecondLast && autoPageTurn {
             preloadNextPageFirstSegment()
         }
     }
@@ -151,6 +153,14 @@ class EnhancedTTSService: NSObject, ObservableObject {
         guard currentPage < totalPages else { return }
         
         let nextPage = currentPage + 1
+        let nextPageKey = -nextPage
+        
+        // 避免重复预加载
+        guard preloadedAudioCache[nextPageKey] == nil else {
+            print("⏭️ 下一页第一段已预加载，跳过")
+            return
+        }
+        
         print("🔄 开始预加载下一页（第\(nextPage)页）第一段...")
         
         Task {
@@ -165,7 +175,6 @@ class EnhancedTTSService: NSObject, ObservableObject {
                     
                     if let audioData = audioData {
                         // 使用特殊键存储下一页第一段音频 (用负数表示下一页)
-                        let nextPageKey = -nextPage
                         preloadedAudioCache[nextPageKey] = audioData
                         print("✅ 预加载下一页（第\(nextPage)页）第一段完成")
                     }
