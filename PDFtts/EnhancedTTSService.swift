@@ -171,7 +171,12 @@ class EnhancedTTSService: NSObject, ObservableObject {
                 
                 if let firstSegment = nextPageSegments.first {
                     // 预加载下一页第一段音频
-                    let audioData = await loadSegmentAudio(segment: TextSegment(text: firstSegment, isEnglish: selectedLanguage == "en", index: 0))
+                    let segment = TextSegment(
+                        text: firstSegment,
+                        isEnglish: selectedLanguage == "en",
+                        index: 0
+                    )
+                    let audioData = await loadSegmentAudio(segment: segment)
                     
                     if let audioData = audioData {
                         // 使用特殊键存储下一页第一段音频 (用负数表示下一页)

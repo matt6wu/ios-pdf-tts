@@ -11,7 +11,7 @@ struct ReadingProgressView: View {
     @ObservedObject var ttsService: EnhancedTTSService
     let currentPage: Int
     let languages = ["zh": "中文", "en": "English"]
-    @State private var textBoxHeight: CGFloat = 120 // 可调整的文本框高度（初始为较小值）
+    @State private var textBoxHeight: CGFloat = 0 // 可调整的文本框高度（初始将动态计算）
     @State private var autoAdjustHeight: Bool = true // 自动调整高度开关
     @State private var isMinimized: Bool = false // 最小化状态
     
@@ -222,44 +222,37 @@ struct ReadingProgressView: View {
                     ScrollViewReader { proxy in
                         ScrollView {
                             Text(ttsService.currentReadingText)
-                                .font(.body)
-                                .foregroundColor(.primary)
+                                .font(getFontForLanguage())
+                                .fontWeight(.medium)
+                                .lineSpacing(getLineSpacingForLanguage())
+                                .foregroundColor(getTextColor())
+                                .multilineTextAlignment(.leading)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 16)
                                 .background(
                                     ZStack {
-                                        // 主背景 - 深色玻璃效果
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .fill(Color.black.opacity(0.05))
-                                            .background(.ultraThinMaterial)
+                                        // 温暖舒适的背景色
+                                        RoundedRectangle(cornerRadius: 16)
+                                            .fill(getBackgroundColor())
                                         
-                                        // 微妙的渐变覆盖
-                                        LinearGradient(
-                                            gradient: Gradient(colors: [
-                                                Color.purple.opacity(0.08),
-                                                Color.blue.opacity(0.06),
-                                                Color.teal.opacity(0.04)
-                                            ]),
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                                        // 轻微的纸质纹理感
+                                        RoundedRectangle(cornerRadius: 16)
+                                            .fill(
+                                                LinearGradient(
+                                                    gradient: Gradient(colors: [
+                                                        Color.white.opacity(0.3),
+                                                        Color.clear,
+                                                        Color.black.opacity(0.02)
+                                                    ]),
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                )
+                                            )
                                     }
                                 )
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(
-                                            LinearGradient(
-                                                gradient: Gradient(colors: [
-                                                    Color.purple.opacity(0.3),
-                                                    Color.blue.opacity(0.2),
-                                                    Color.teal.opacity(0.1)
-                                                ]),
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            ),
-                                            lineWidth: 1.5
-                                        )
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .stroke(Color.gray.opacity(0.1), lineWidth: 1)
                                 )
                                 .id("textContent")
                         }
@@ -275,8 +268,6 @@ struct ReadingProgressView: View {
                             withAnimation(.easeInOut(duration: 0.3)) {
                                 proxy.scrollTo("textContent", anchor: .top)
                             }
-                            // 自动调整文本框高度
-                            autoAdjustTextBoxHeight()
                         }
                     }
                     
@@ -392,8 +383,27 @@ struct ReadingProgressView: View {
         .animation(.easeInOut(duration: 0.3), value: ttsService.isPlaying)
         .animation(.easeInOut(duration: 0.3), value: ttsService.currentReadingText)
         .onAppear {
-            // 界面首次出现时进行初始高度调整
-            autoAdjustTextBoxHeight()
+            // 界面首次出现时设置初始高度
+            if textBoxHeight == 0 {
+                textBoxHeight = 150 // 临时默认高度
+            }
+        }
+        .onChange(of: ttsService.currentReadingText) { newText in
+            // 文本第一次出现时（从空文本到有内容），立即设置合适的高度
+            if !newText.isEmpty && (textBoxHeight == 0 || textBoxHeight == 150) {
+                let calculatedHeight = calculateTextHeight(for: newText)
+                textBoxHeight = calculatedHeight
+            } else {
+                // 后续文本变化，按正常逻辑处理
+                autoAdjustTextBoxHeight()
+            }
+        }
+        .onChange(of: ttsService.showTTSInterface) { isShowing in
+            // TTS界面刚显示时，如果有文本内容，立即调整高度
+            if isShowing && !ttsService.currentReadingText.isEmpty && (textBoxHeight == 0 || textBoxHeight == 150) {
+                let calculatedHeight = calculateTextHeight(for: ttsService.currentReadingText)
+                textBoxHeight = calculatedHeight
+            }
         }
     }
     
@@ -401,31 +411,91 @@ struct ReadingProgressView: View {
     private func calculateTextHeight(for text: String) -> CGFloat {
         // 如果文本为空或很短，返回较小的默认高度
         if text.isEmpty || text.count < 20 {
-            return 120 // 空文本或短文本的默认高度
+            return 120 // 空文本或短文本的最小高度
         }
         
-        let font = UIFont.preferredFont(forTextStyle: .body)
-        let maxWidth = UIScreen.main.bounds.width - 64 // 减去padding
+        // 根据当前语言获取字体
+        let uiFont: UIFont
+        if ttsService.selectedLanguage == "zh" {
+            uiFont = UIFont(name: "PingFang SC", size: 18) ?? UIFont.systemFont(ofSize: 18, weight: .medium)
+        } else {
+            uiFont = UIFont.systemFont(ofSize: 17, weight: .regular)
+        }
         
+        let maxWidth = UIScreen.main.bounds.width - 64 // 减去padding
+        let lineSpacing = getLineSpacingForLanguage()
+        
+        // 计算文本高度，考虑行间距
         let textSize = text.boundingRect(
             with: CGSize(width: maxWidth, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: [.font: font],
+            attributes: [
+                .font: uiFont,
+                .paragraphStyle: {
+                    let paragraphStyle = NSMutableParagraphStyle()
+                    paragraphStyle.lineSpacing = lineSpacing
+                    paragraphStyle.alignment = .left
+                    return paragraphStyle
+                }()
+            ],
             context: nil
         ).size
         
-        // 基础padding + 文本高度，限制在120-600之间
-        let calculatedHeight = textSize.height + 60 // 32 padding + 28 额外空间
-        return min(max(calculatedHeight, 120), 600)
+        // 估算行数并添加行间距
+        let lineHeight = uiFont.lineHeight
+        let estimatedLines = max(1, ceil(textSize.height / lineHeight))
+        let totalLineSpacing = (estimatedLines - 1) * lineSpacing
+        
+        // 基础padding + 文本高度 + 行间距，限制在120-450之间
+        let calculatedHeight = textSize.height + totalLineSpacing + 32 // 紧凑的padding
+        return min(max(calculatedHeight, 120), 450)
     }
     
     // 自动调整文本框高度
     private func autoAdjustTextBoxHeight() {
-        if autoAdjustHeight {
+        if autoAdjustHeight || textBoxHeight == 0 {
             let newHeight = calculateTextHeight(for: ttsService.currentReadingText)
-            withAnimation(.easeInOut(duration: 0.3)) {
+            if textBoxHeight == 0 {
+                // 初始设置，无动画
                 textBoxHeight = newHeight
+            } else {
+                // 后续调整，有动画
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    textBoxHeight = newHeight
+                }
             }
+        }
+    }
+    
+    // 根据语言获取最佳字体
+    private func getFontForLanguage() -> Font {
+        if ttsService.selectedLanguage == "zh" {
+            // 中文：使用苹方字体，更现代更舒适
+            return .custom("PingFang SC", size: 18)
+        } else {
+            // 英文：使用系统字体
+            return .system(size: 17, weight: .regular, design: .default)
+        }
+    }
+    
+    // 根据语言获取行间距
+    private func getLineSpacingForLanguage() -> CGFloat {
+        return ttsService.selectedLanguage == "zh" ? 10 : 6
+    }
+    
+    // 获取舒适的文本颜色
+    private func getTextColor() -> Color {
+        return Color(UIColor.label).opacity(0.9)
+    }
+    
+    // 获取温暖舒适的背景色
+    private func getBackgroundColor() -> Color {
+        if ttsService.selectedLanguage == "zh" {
+            // 中文：温暖的米色调，护眼
+            return Color(red: 0.98, green: 0.97, blue: 0.94)
+        } else {
+            // 英文：清爽的白色调
+            return Color(red: 0.99, green: 0.99, blue: 1.0)
         }
     }
     
