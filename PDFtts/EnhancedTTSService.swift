@@ -1105,7 +1105,7 @@ class EnhancedTTSService: NSObject, ObservableObject {
         let cleanText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         
         // 根据语言选择分段长度
-        let actualMaxLength = maxLength ?? (selectedLanguage == "zh" ? 150 : 400)
+        let actualMaxLength = maxLength ?? (selectedLanguage == "zh" ? 100 : 400)
         
         if cleanText.count <= actualMaxLength {
             return cleanText.isEmpty ? [] : [cleanText]
