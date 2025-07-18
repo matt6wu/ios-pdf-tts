@@ -1113,8 +1113,9 @@ class EnhancedTTSService: NSObject, ObservableObject {
     private func splitTextIntelligently(text: String, maxLength: Int? = nil) -> [String] {
         let cleanText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // 根据语言选择分段长度
+        // 根据语言选择分段长度和最小长度
         let actualMaxLength = maxLength ?? (selectedLanguage == "zh" ? 100 : 400)
+        let minLength = selectedLanguage == "zh" ? 30 : 50 // 中文最小30字符，英文最小50字符
         
         if cleanText.count <= actualMaxLength {
             return cleanText.isEmpty ? [] : [cleanText]
@@ -1165,13 +1166,35 @@ class EnhancedTTSService: NSObject, ObservableObject {
             segments.append(cleanText)
         }
         
-        print("📊 文本分段结果: \(segments.count) 段")
-        for (index, segment) in segments.enumerated() {
+        // 合并过短的段落
+        var mergedSegments: [String] = []
+        var i = 0
+        
+        while i < segments.count {
+            var currentMerged = segments[i]
+            
+            // 如果当前段太短，尝试与下一段合并
+            while currentMerged.count < minLength && i + 1 < segments.count {
+                let nextSegment = segments[i + 1]
+                if currentMerged.count + nextSegment.count <= actualMaxLength {
+                    currentMerged += nextSegment
+                    i += 1 // 跳过已合并的段
+                } else {
+                    break // 合并会超长，停止合并
+                }
+            }
+            
+            mergedSegments.append(currentMerged)
+            i += 1
+        }
+        
+        print("📊 文本分段结果: \(mergedSegments.count) 段（合并后）")
+        for (index, segment) in mergedSegments.enumerated() {
             let preview = segment.count > 50 ? String(segment.prefix(50)) + "..." : segment
             print("段 \(index + 1): \"\(preview)\" (\(segment.count) 字符)")
         }
         
-        return segments.filter { !$0.isEmpty }
+        return mergedSegments.filter { !$0.isEmpty }
     }
     
     // 获取当前高亮句子（用于UI显示）
