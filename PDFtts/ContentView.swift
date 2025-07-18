@@ -19,6 +19,7 @@ struct ContentView: View {
     @StateObject private var ttsService = EnhancedTTSService()
     @State private var pdfDocument: PDFDocument?
     @State private var showPageSlider = true // 控制滑块显示
+    @State private var showUserSettings = false // 控制用户设置界面
     
     var body: some View {
         GeometryReader { geometry in
@@ -52,9 +53,11 @@ struct ContentView: View {
                         Spacer()
                         
                         HStack(spacing: 12) {
-                            // 测试按钮
-                            Button(action: testTextExtraction) {
-                                Image(systemName: "magnifyingglass")
+                            // 用户设置按钮
+                            Button(action: {
+                                showUserSettings.toggle()
+                            }) {
+                                Image(systemName: "person.circle")
                                     .font(.title2)
                                     .foregroundColor(.green)
                             }
@@ -212,6 +215,9 @@ struct ContentView: View {
                         .onDrop(of: ["public.file-url"], isTargeted: nil) { providers in
                             handleDrop(providers: providers)
                         }
+                        .sheet(isPresented: $showUserSettings) {
+                            UserSettingsView(isPresented: $showUserSettings)
+                        }
                     }
                     
                     // 底部控制栏
@@ -281,6 +287,9 @@ struct ContentView: View {
                             currentPage = 1
                             totalPages = 0
                             zoomScale = 0.8
+                            
+                            // 根据文件名自动检测语言
+                            autoDetectLanguageFromFileName(url.lastPathComponent)
                             
                             // 加载新文档
                             loadPDFDocument(url: selectedPDF!)
@@ -443,12 +452,20 @@ struct ContentView: View {
     }
     
     private func restoreReadingState() {
+        // 恢复语言偏好
+        if let savedLanguage = UserDefaults.standard.string(forKey: "LastSelectedLanguage") {
+            ttsService.selectedLanguage = savedLanguage
+            print("🌐 恢复语言偏好: \(savedLanguage == "zh" ? "中文" : "English")")
+        }
+        
         guard let savedPath = UserDefaults.standard.string(forKey: "LastPDFPath") else { 
             print("📚 没有保存的阅读状态，加载默认PDF")
             // 如果没有保存的状态，加载默认PDF
             if let defaultPDF = Bundle.main.url(forResource: "today", withExtension: "pdf") {
                 selectedPDF = defaultPDF
                 loadPDFDocument(url: defaultPDF)
+                // 根据默认PDF文件名自动检测语言
+                autoDetectLanguageFromFileName("today.pdf")
             }
             return 
         }
@@ -473,6 +490,8 @@ struct ContentView: View {
             zoomScale = savedZoom > 0 ? CGFloat(savedZoom) : 0.8
             
             loadPDFDocument(url: url)
+            // 根据恢复的PDF文件名自动检测语言
+            autoDetectLanguageFromFileName(url.lastPathComponent)
             print("📚 已恢复阅读状态: \(savedPath) 第\(currentPage)页/共\(totalPages)页")
         } else {
             print("❌ 保存的PDF文件不存在: \(savedPath)")
@@ -547,53 +566,6 @@ struct ContentView: View {
         return ttsService.showTTSInterface ? .orange : .blue
     }
     
-    private func testTextExtraction() {
-        guard let document = pdfDocument else { 
-            print("❌ PDF文档未加载")
-            return 
-        }
-        
-        print("🔍 开始测试文本提取...")
-        print("📚 PDF总页数: \(document.pageCount)")
-        
-        // 测试第10页（索引为9）
-        let pageIndex = 9
-        
-        if pageIndex < document.pageCount {
-            // 显示第10页的所有句子
-            document.debugPageSentences(at: pageIndex)
-            
-            // 测试提取特定句子
-            let sentences = document.getPageSentences(at: pageIndex)
-            
-            if sentences.count > 0 {
-                print("\n🎯 测试提取第10页的句子:")
-                
-                // 提取第1句（索引0）
-                if let firstSentence = document.getSentence(at: pageIndex, sentenceIndex: 0) {
-                    print("第1句: \(firstSentence)")
-                }
-                
-                // 提取第3句（索引2）
-                if let thirdSentence = document.getSentence(at: pageIndex, sentenceIndex: 2) {
-                    print("第3句: \(thirdSentence)")
-                }
-                
-                // 提取句子范围（第2-4句）
-                if let sentenceRange = document.getSentenceRange(at: pageIndex, from: 1, to: 3) {
-                    print("第2-4句: \(sentenceRange)")
-                    
-                    // 测试TTS朗读这个句子范围
-                    print("\n🎵 测试朗读句子范围...")
-                    Task {
-                        await ttsService.startReading(text: sentenceRange)
-                    }
-                }
-            }
-        } else {
-            print("❌ 页面索引超出范围，PDF只有\(document.pageCount)页")
-        }
-    }
     
     private func previousPage() {
         if currentPage > 1 {
@@ -635,6 +607,9 @@ struct ContentView: View {
                             totalPages = 0
                             zoomScale = 0.8
                             
+                            // 根据文件名自动检测语言
+                            autoDetectLanguageFromFileName(url.lastPathComponent)
+                            
                             // 加载新文档
                             loadPDFDocument(url: selectedPDF!)
                             
@@ -647,6 +622,47 @@ struct ContentView: View {
             }
         }
         return false
+    }
+    
+    // 根据文件名自动检测语言
+    private func autoDetectLanguageFromFileName(_ fileName: String) {
+        let hasChinese = containsChineseCharacters(fileName)
+        let newLanguage = hasChinese ? "zh" : "en"
+        
+        // 只有当语言真的改变时才更新
+        if ttsService.selectedLanguage != newLanguage {
+            print("🌐 根据文件名'\(fileName)'自动切换语言: \(hasChinese ? "中文" : "English")")
+            ttsService.selectedLanguage = newLanguage
+            
+            // 保存语言偏好到UserDefaults
+            UserDefaults.standard.set(newLanguage, forKey: "LastSelectedLanguage")
+        }
+    }
+    
+    // 检测字符串中是否包含中文字符
+    private func containsChineseCharacters(_ text: String) -> Bool {
+        for char in text {
+            // 检查字符是否在中文Unicode范围内
+            let scalar = char.unicodeScalars.first?.value ?? 0
+            // 中文字符的主要Unicode范围：
+            // 0x4E00-0x9FFF: CJK统一汉字
+            // 0x3400-0x4DBF: CJK扩展A
+            // 0x20000-0x2A6DF: CJK扩展B
+            // 0x2A700-0x2B73F: CJK扩展C
+            // 0x2B740-0x2B81F: CJK扩展D
+            if (scalar >= 0x4E00 && scalar <= 0x9FFF) ||
+               (scalar >= 0x3400 && scalar <= 0x4DBF) {
+                return true
+            }
+        }
+        return false
+    }
+}
+
+// 扩展：添加用户设置界面
+extension ContentView {
+    var userSettingsSheet: some View {
+        UserSettingsView(isPresented: $showUserSettings)
     }
 }
 

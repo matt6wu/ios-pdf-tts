@@ -195,7 +195,7 @@ struct ReadingProgressView: View {
                         Button(action: {
                             ttsService.goToReadingPage()
                         }) {
-                            Image(systemName: "book.circle.fill")
+                            Image(systemName: "arrow.up.arrow.down.circle.fill")
                                 .font(.title2)
                                 .foregroundColor(.white)
                                 .padding(12)
@@ -251,10 +251,10 @@ struct ReadingProgressView: View {
                         Spacer()
                         
                         // 调整大小手柄
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Color.gray.opacity(0.5))
-                            .frame(width: 40, height: 4)
-                            .padding(.vertical, 8)
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color.gray.opacity(0.6))
+                            .frame(width: 60, height: 6)
+                            .padding(.vertical, 12)
                             .gesture(
                                 DragGesture()
                                     .onChanged { value in

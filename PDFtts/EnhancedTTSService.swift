@@ -103,29 +103,72 @@ class EnhancedTTSService: NSObject, ObservableObject {
         }
     }
     
-    // 开始预加载下一段
+    // 开始预加载下一段（支持跨页面预加载）
     private func startPreloadNext(index: Int) {
-        guard index < currentSegments.count && isPlaying && !shouldStop else { return }
-        
-        // 避免重复预加载
-        guard preloadTasks[index] == nil && preloadedAudioCache[index] == nil else { return }
-        
-        let segment = currentSegments[index]
-        print("🔄 开始预加载第 \(index + 1) 段...")
-        
-        let task = Task<Data?, Never> {
-            return await loadSegmentAudio(segment: segment)
+        // 如果当前页还有下一段，预加载当前页的下一段
+        if index < currentSegments.count {
+            guard isPlaying && !shouldStop else { return }
+            
+            // 避免重复预加载
+            guard preloadTasks[index] == nil && preloadedAudioCache[index] == nil else { return }
+            
+            let segment = currentSegments[index]
+            print("🔄 开始预加载第 \(index + 1) 段...")
+            
+            let task = Task<Data?, Never> {
+                return await loadSegmentAudio(segment: segment)
+            }
+            
+            preloadTasks[index] = task
+            
+            // 异步等待完成并存储结果
+            Task {
+                if let audioData = await task.value {
+                    // 只有在任务没被取消时才存储
+                    if preloadTasks[index] != nil {
+                        preloadedAudioCache[index] = audioData
+                        print("✅ 预加载第 \(index + 1) 段完成")
+                    }
+                }
+            }
         }
+        // 如果是当前页最后一段，且开启了自动翻页，预加载下一页第一段
+        else if autoPageTurn && isPlaying && !shouldStop {
+            preloadNextPageFirstSegment()
+        }
+    }
+    
+    // 预加载下一页第一段
+    private func preloadNextPageFirstSegment() {
+        guard let getCurrentPage = getCurrentPage, 
+              let getTotalPages = getTotalPages,
+              let getPageText = getPageText else { return }
         
-        preloadTasks[index] = task
+        let currentPage = getCurrentPage()
+        let totalPages = getTotalPages()
         
-        // 异步等待完成并存储结果
+        // 检查是否还有下一页
+        guard currentPage < totalPages else { return }
+        
+        let nextPage = currentPage + 1
+        print("🔄 开始预加载下一页（第\(nextPage)页）第一段...")
+        
         Task {
-            if let audioData = await task.value {
-                // 只有在任务没被取消时才存储
-                if preloadTasks[index] != nil {
-                    preloadedAudioCache[index] = audioData
-                    print("✅ 预加载第 \(index + 1) 段完成")
+            // 获取下一页文本
+            if let nextPageText = getPageText(nextPage), !nextPageText.isEmpty {
+                // 分段下一页文本
+                let nextPageSegments = splitTextIntelligently(text: nextPageText)
+                
+                if let firstSegment = nextPageSegments.first {
+                    // 预加载下一页第一段音频
+                    let audioData = await loadSegmentAudio(segment: TextSegment(text: firstSegment, isEnglish: selectedLanguage == "en", index: 0))
+                    
+                    if let audioData = audioData {
+                        // 使用特殊键存储下一页第一段音频 (用负数表示下一页)
+                        let nextPageKey = -nextPage
+                        preloadedAudioCache[nextPageKey] = audioData
+                        print("✅ 预加载下一页（第\(nextPage)页）第一段完成")
+                    }
                 }
             }
         }
@@ -678,7 +721,7 @@ class EnhancedTTSService: NSObject, ObservableObject {
                         isProcessing = false
                         print("🔄 自动翻页重置 isProcessing = false")
                         
-                        await startReading(text: text)
+                        await startReadingWithPreload(text: text, pageNumber: nextPage)
                         return // 不执行下面的完成逻辑
                     } else {
                         print("❌ 第 \(retryCount) 次尝试失败: 第 \(nextPage) 页文本为空或nil")
@@ -1128,6 +1171,258 @@ class EnhancedTTSService: NSObject, ObservableObject {
             return highlightedSentences[currentSegmentIndex]
         }
         return ""
+    }
+    
+    // 使用预加载音频启动朗读（专用于自动翻页）
+    private func startReadingWithPreload(text: String, pageNumber: Int) async {
+        // 注意：在自动翻页的情况下，isProcessing 会在 playSegments 内部的自动翻页逻辑中处理
+        // 只有当不是自动翻页时才重置 isProcessing
+        if !isProcessing {
+            print("🔄 自动翻页模式，保持 isProcessing 状态")
+        }
+        
+        if shouldStop || !isPlaying {
+            print("⚠️ 用户已停止，跳过朗读")
+            return
+        }
+        
+        // 创建分段
+        let segments = createSegments(from: text)
+        
+        await MainActor.run {
+            currentSegments = segments
+            totalSegments = segments.count
+            currentSegmentIndex = 0
+            currentReadingPage = pageNumber
+            
+            highlightedSentences = segments.map { $0.text }
+        }
+        
+        print("📝 开始朗读分段，共 \(segments.count) 段")
+        
+        // 检查是否有预加载的第一段音频
+        let preloadKey = -pageNumber
+        var firstSegmentAudio: Data? = nil
+        
+        if let preloadedAudio = preloadedAudioCache[preloadKey] {
+            firstSegmentAudio = preloadedAudio
+            preloadedAudioCache.removeValue(forKey: preloadKey)
+            print("⚡ 使用预加载的下一页第一段音频")
+        }
+        
+        // 开始播放分段（带预加载音频）
+        await playSegmentsWithPreload(segments: segments, firstSegmentAudio: firstSegmentAudio)
+    }
+    
+    // 播放分段（支持第一段使用预加载音频）
+    private func playSegmentsWithPreload(segments: [TextSegment], firstSegmentAudio: Data?) async {
+        // 清空之前的缓存和任务
+        preloadedAudioCache.removeAll()
+        cancelAllPreloadTasks()
+        
+        guard !segments.isEmpty else {
+            print("⚠️ 没有可播放的分段")
+            return
+        }
+        
+        for (index, segment) in segments.enumerated() {
+            if shouldStop || !isPlaying {
+                print("🛑 播放被停止，退出播放循环")
+                break
+            }
+            
+            await MainActor.run {
+                currentSegmentIndex = index
+                currentReadingText = segment.text
+            }
+            
+            print("🎵 播放第 \(index + 1)/\(segments.count) 段: \(segment.text.prefix(50))...")
+            
+            var audioData: Data?
+            
+            // 第一段优先使用预加载音频
+            if index == 0 && firstSegmentAudio != nil {
+                print("⚡ 使用预加载音频播放第一段")
+                audioData = firstSegmentAudio
+            } else {
+                // 等待预加载任务完成（如果存在）
+                if let preloadTask = preloadTasks[index] {
+                    print("⏳ 等待预加载任务完成第 \(index + 1) 段...")
+                    audioData = await preloadTask.value
+                    preloadTasks.removeValue(forKey: index)
+                } else if let cachedData = preloadedAudioCache[index] {
+                    print("⚡ 使用预加载音频第 \(index + 1) 段")
+                    audioData = cachedData
+                    preloadedAudioCache.removeValue(forKey: index)
+                } else {
+                    print("🌐 实时加载第 \(index + 1) 段...")
+                    audioData = await loadSegmentAudio(segment: segment)
+                }
+            }
+            
+            // 开始预加载下一段（顺序控制）
+            startPreloadNext(index: index + 1)
+            
+            if let audioData = audioData {
+                await playAudioData(audioData)
+            } else {
+                print("❌ API调用失败，跳过此段: \(segment.text.prefix(50))...")
+                // 如果API失败，短暂等待后继续下一段
+                try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
+            }
+            
+            // 等待播放完成
+            await waitForPlaybackCompletion()
+        }
+        
+        // 播放完成后检查是否需要自动翻页
+        if autoPageTurn && !shouldStop && isPlaying, let getCurrentPage = getCurrentPage, let getTotalPages = getTotalPages {
+            let currentPage = getCurrentPage()
+            let totalPages = getTotalPages()
+            
+            print("📖 当前页: \(currentPage)/\(totalPages)")
+            
+            if currentPage < totalPages {
+                let nextPage = currentPage + 1
+                print("📄 自动翻页到第 \(nextPage) 页")
+                
+                // 再次检查是否应该停止
+                if shouldStop || !isPlaying {
+                    print("⚠️ 检测到停止信号，取消自动翻页")
+                    return
+                }
+                
+                // 显示翻页状态
+                await MainActor.run {
+                    currentReadingText = "📄 正在翻页到第 \(nextPage) 页..."
+                    currentReadingPage = nextPage
+                    print("📱 调用页面变更回调: \(nextPage)")
+                    onPageChange?(nextPage)
+                }
+                print("📱 页面变更回调已调用")
+                
+                // 短暂延迟等待翻页完成
+                try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5秒
+                
+                // 再次检查是否应该停止
+                if shouldStop || !isPlaying {
+                    print("⚠️ 翻页等待期间检测到停止信号，取消后续操作")
+                    return
+                }
+                
+                // 获取下一页文本并继续朗读
+                print("📖 准备获取第 \(nextPage) 页文本...")
+                
+                // 验证当前页码是否已更新
+                let updatedCurrentPage = getCurrentPage()
+                print("📖 UI当前页码: \(updatedCurrentPage)")
+                
+                // 检查页面是否真的更新了
+                if updatedCurrentPage != nextPage {
+                    print("⚠️ 页面更新失败！期望第 \(nextPage) 页，但UI显示第 \(updatedCurrentPage) 页")
+                    // 更新状态显示问题
+                    await MainActor.run {
+                        currentReadingText = "⚠️ 页面更新失败，停止自动翻页"
+                    }
+                    try? await Task.sleep(nanoseconds: 1_000_000_000) // 1秒
+                    return
+                } else {
+                    print("✅ 页面更新成功，UI已显示第 \(nextPage) 页")
+                }
+                
+                // 尝试多次获取文本，确保PDF已完全加载
+                var nextPageText: String?
+                var retryCount = 0
+                let maxRetries = 3
+                
+                while retryCount < maxRetries {
+                    retryCount += 1
+                    print("📡 第 \(retryCount) 次尝试获取第 \(nextPage) 页文本...")
+                    nextPageText = getPageText?(nextPage)
+                    
+                    if let text = nextPageText, !text.isEmpty {
+                        print("✅ 成功获取第 \(nextPage) 页文本，长度: \(text.count)")
+                        print("📝 文本预览: \(text.prefix(200))...")
+                        
+                        // 检查是否应该继续自动翻页
+                        if shouldStop || !isPlaying {
+                            print("⚠️ 用户已停止播放或关闭界面，终止自动翻页")
+                            return
+                        }
+                        
+                        // 更新状态显示
+                        await MainActor.run {
+                            showTTSInterface = true
+                            currentReadingText = "📄 正在自动翻页到第 \(nextPage) 页..."
+                            print("🎛️ 自动翻页时保持TTS界面显示")
+                        }
+                        
+                        // 短暂显示翻页状态
+                        try? await Task.sleep(nanoseconds: 300_000_000) // 0.3秒
+                        
+                        // 再次检查是否应该继续
+                        if shouldStop || !isPlaying {
+                            print("⚠️ 在准备开始新朗读时检测到停止信号，终止操作")
+                            return
+                        }
+                        
+                        // 重置 isProcessing 以允许新的朗读开始
+                        isProcessing = false
+                        print("🔄 自动翻页重置 isProcessing = false")
+                        
+                        await startReadingWithPreload(text: text, pageNumber: nextPage)
+                        return // 不执行下面的完成逻辑
+                    } else {
+                        print("❌ 第 \(retryCount) 次尝试失败: 第 \(nextPage) 页文本为空或nil")
+                        print("📊 nextPageText 是否为 nil: \(nextPageText == nil)")
+                        if let text = nextPageText {
+                            print("📊 文本内容: \"\(text)\"")
+                            print("📊 文本长度: \(text.count)")
+                        }
+                        
+                        // 等待一段时间再重试
+                        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1秒
+                    }
+                }
+                
+                // 如果所有重试都失败了
+                print("❌ 多次尝试后仍无法获取第 \(nextPage) 页文本，停止朗读")
+                print("📊 尝试获取的页码: \(nextPage)")
+                print("📊 UI显示的页码: \(getCurrentPage())")
+                
+                // 显示错误状态
+                await MainActor.run {
+                    currentReadingText = "❌ 无法获取第 \(nextPage) 页文本，朗读停止"
+                }
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2秒
+                stopReading()
+            } else {
+                print("📚 已到达最后一页，朗读完成")
+                // 显示完成状态
+                await MainActor.run {
+                    currentReadingText = "✅ 文档朗读完成"
+                }
+                
+                // 短暂显示完成状态后停止
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2秒
+                stopReading()
+            }
+        } else {
+            print("🎯 当前页朗读完成（未开启自动翻页或到达文档末尾）")
+            // 显示完成状态
+            await MainActor.run {
+                currentReadingText = "✅ 当前页朗读完成"
+            }
+            
+            // 短暂显示完成状态
+            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2秒
+            
+            // 停止播放
+            await MainActor.run {
+                isPlaying = false
+                isProcessing = false
+            }
+        }
     }
 }
 
