@@ -63,7 +63,6 @@ struct ContentView: View {
                                     .fontWeight(.light)
                                     .foregroundColor(showUserSettings ? Color(red: 0.3, green: 0.6, blue: 1.0) : Color(red: 0.7, green: 0.7, blue: 0.7))
                             }
-                            .disabled(selectedPDF == nil)
                             
                             // 朗读/暂停按钮
                             Button(action: toggleReading) {
@@ -224,9 +223,6 @@ struct ContentView: View {
                         .onDrop(of: ["public.file-url"], isTargeted: nil) { providers in
                             handleDrop(providers: providers)
                         }
-                        .sheet(isPresented: $showUserSettings) {
-                            UserSettingsView(isPresented: $showUserSettings, ttsService: ttsService)
-                        }
                     }
                     
                     // 底部控制栏
@@ -326,6 +322,9 @@ struct ContentView: View {
             // 应用即将进入后台时保存状态
             saveReadingState()
             print("📱 应用即将进入后台，保存状态")
+        }
+        .sheet(isPresented: $showUserSettings) {
+            UserSettingsView(isPresented: $showUserSettings, ttsService: ttsService)
         }
         .onChange(of: currentPage) { newPage in
             // 页面变化时保存状态

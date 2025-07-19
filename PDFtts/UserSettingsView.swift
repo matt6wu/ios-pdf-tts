@@ -24,7 +24,7 @@ struct UserSettingsView: View {
                         Spacer()
                     }
                     .padding(.horizontal)
-                
+                    
                     // 设置选项列表
                     VStack(spacing: 16) {
                         // Speaker选择区域
@@ -57,16 +57,14 @@ struct UserSettingsView: View {
                                 .cornerRadius(8)
                             }
                         }
-                    
                         
                         Divider()
                         
-                        // API设置区域（预留）
+                        // API设置区域
                         VStack(alignment: .leading, spacing: 12) {
                             Text("TTS API设置")
                                 .font(.headline)
                                 .foregroundColor(.secondary)
-                        
                             
                             VStack(spacing: 8) {
                                 HStack {
@@ -96,7 +94,6 @@ struct UserSettingsView: View {
                                 .cornerRadius(8)
                             }
                         }
-                    
                         
                         Divider()
                         
@@ -105,7 +102,6 @@ struct UserSettingsView: View {
                             Text("应用信息")
                                 .font(.headline)
                                 .foregroundColor(.secondary)
-                        
                             
                             VStack(spacing: 8) {
                                 HStack {
@@ -137,7 +133,6 @@ struct UserSettingsView: View {
                         }
                     }
                     .padding(.horizontal)
-                
                     
                     // 未来功能提示
                     VStack(spacing: 8) {
@@ -154,7 +149,7 @@ struct UserSettingsView: View {
                     .background(Color.blue.opacity(0.1))
                     .cornerRadius(12)
                     .padding(.horizontal)
-                
+                    
                     Spacer(minLength: 50)
                 }
                 .padding(.vertical)
