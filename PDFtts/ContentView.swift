@@ -143,18 +143,23 @@ struct ContentView: View {
                                     showPageSlider.toggle()
                                 }
                                 
-                                // 右侧页面滑块 - 只在显示时出现
+                                // 底部页面滑块 - 只在显示时出现
                                 if totalPages > 1 && showPageSlider {
                                     VStack {
                                         Spacer()
                                         
-                                        // 垂直滑块
-                                        VStack(spacing: 0) {
+                                        // 水平滑块
+                                        HStack(spacing: 12) {
+                                            Text("\(currentPage)")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                                .frame(minWidth: 20)
+                                            
                                             Slider(
                                                 value: Binding(
-                                                    get: { Double(totalPages - currentPage + 1) },
+                                                    get: { Double(currentPage) },
                                                     set: { newValue in
-                                                        let newPage = totalPages - Int(newValue.rounded()) + 1
+                                                        let newPage = Int(newValue.rounded())
                                                         if newPage != currentPage {
                                                             currentPage = newPage
                                                         }
@@ -163,24 +168,16 @@ struct ContentView: View {
                                                 in: 1...Double(totalPages),
                                                 step: 1
                                             )
-                                            .rotationEffect(.degrees(-90))
-                                            .frame(width: 100, height: 100)
-                                            .accentColor(.blue)
+                                            .frame(height: 20)
+                                            .accentColor(Color(red: 0.3, green: 0.6, blue: 1.0))
                                             
-                                            // 页码显示
-                                            Text("\(currentPage)/\(totalPages)")
+                                            Text("\(totalPages)")
                                                 .font(.caption)
                                                 .foregroundColor(.secondary)
-                                                .padding(.top, 4)
+                                                .frame(minWidth: 20)
                                         }
-                                        .padding(.trailing, 8)
-                                        .padding(.vertical, 20)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .fill(Color.secondary.opacity(0.1))
-                                        )
-                                        
-                                        Spacer()
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 8)
                                     }
                                     .transition(.opacity)
                                     .animation(.easeInOut(duration: 0.3), value: showPageSlider)

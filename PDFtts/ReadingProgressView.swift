@@ -216,14 +216,14 @@ struct ReadingProgressView: View {
                 VStack(spacing: 0) {
                     ScrollViewReader { proxy in
                         ScrollView {
-                            Text(ttsService.currentReadingText)
+                            Text(formatDisplayText(ttsService.currentReadingText))
                                 .font(getFontForLanguage())
                                 .fontWeight(.medium)
                                 .lineSpacing(getLineSpacingForLanguage())
                                 .foregroundColor(getTextColor())
                                 .multilineTextAlignment(.leading)
                                 .padding(.horizontal, 16)
-                                .padding(.vertical, 16)
+                                .padding(.vertical, 12)
                                 .background(
                                     ZStack {
                                         // 温暖舒适的背景色
@@ -395,7 +395,7 @@ struct ReadingProgressView: View {
         .onChange(of: ttsService.showTTSInterface) { isShowing in
             // TTS界面刚显示时，如果有文本内容，立即调整高度
             if isShowing && !ttsService.currentReadingText.isEmpty && (textBoxHeight == 0 || textBoxHeight == 150) {
-                let calculatedHeight = calculateTextHeight(for: ttsService.currentReadingText)
+                let calculatedHeight = calculateTextHeight(for: formatDisplayText(ttsService.currentReadingText))
                 textBoxHeight = calculatedHeight
             }
         }
@@ -435,20 +435,19 @@ struct ReadingProgressView: View {
             context: nil
         ).size
         
-        // 估算行数并添加行间距
-        let lineHeight = uiFont.lineHeight
-        let estimatedLines = max(1, ceil(textSize.height / lineHeight))
-        let totalLineSpacing = (estimatedLines - 1) * lineSpacing
+        // 对于格式化后的连续文本，使用更紧凑的计算
+        // 文本高度已经包含了必要的行间距，不需要额外添加太多
+        let padding: CGFloat = 24 // 减少padding，上下各12px
+        let calculatedHeight = textSize.height + padding
         
-        // 基础padding + 文本高度 + 行间距，限制在120-450之间
-        let calculatedHeight = textSize.height + totalLineSpacing + 32 // 紧凑的padding
-        return min(max(calculatedHeight, 120), 450)
+        // 限制在100-400之间，减少最小高度和最大高度
+        return min(max(calculatedHeight, 100), 400)
     }
     
     // 自动调整文本框高度
     private func autoAdjustTextBoxHeight() {
         if autoAdjustHeight || textBoxHeight == 0 {
-            let newHeight = calculateTextHeight(for: ttsService.currentReadingText)
+            let newHeight = calculateTextHeight(for: formatDisplayText(ttsService.currentReadingText))
             if textBoxHeight == 0 {
                 // 初始设置，无动画
                 textBoxHeight = newHeight
@@ -461,11 +460,25 @@ struct ReadingProgressView: View {
         }
     }
     
+    // 格式化显示文本，清理多余的换行符
+    private func formatDisplayText(_ text: String) -> String {
+        // 将连续的换行符替换为单个空格
+        // 这样保持可读性但节省显示空间
+        let cleanedText = text
+            .replacingOccurrences(of: "\r\n", with: "\n") // 统一换行符
+            .replacingOccurrences(of: "\r", with: "\n")   // 统一换行符
+            .replacingOccurrences(of: "\n+", with: " ", options: .regularExpression) // 多个换行符替换为空格
+            .replacingOccurrences(of: "[ ]+", with: " ", options: .regularExpression) // 多个空格替换为单个空格
+            .trimmingCharacters(in: .whitespacesAndNewlines) // 去除首尾空白
+        
+        return cleanedText
+    }
+    
     // 根据语言获取最佳字体
     private func getFontForLanguage() -> Font {
         if ttsService.selectedLanguage == "zh" {
-            // 中文：使用苹方字体，更现代更舒适
-            return .custom("PingFang SC", size: 18)
+            // 中文：使用苹方字体，更小更紧凑
+            return .custom("PingFang SC", size: 16)
         } else {
             // 英文：使用系统字体
             return .system(size: 17, weight: .regular, design: .default)
@@ -474,7 +487,7 @@ struct ReadingProgressView: View {
     
     // 根据语言获取行间距
     private func getLineSpacingForLanguage() -> CGFloat {
-        return ttsService.selectedLanguage == "zh" ? 10 : 6
+        return ttsService.selectedLanguage == "zh" ? 6 : 6
     }
     
     // 获取舒适的文本颜色
@@ -484,17 +497,14 @@ struct ReadingProgressView: View {
     
     // 获取温暖舒适的背景色
     private func getBackgroundColor() -> Color {
-        if ttsService.selectedLanguage == "zh" {
-            // 中文：温暖的米色调，护眼
-            return Color(red: 0.98, green: 0.97, blue: 0.94)
-        } else {
-            // 英文：清爽的白色调
-            return Color(red: 0.99, green: 0.99, blue: 1.0)
-        }
+        return Color(UIColor.secondarySystemBackground)
     }
     
     // 播放控制辅助函数
     private func startReadingCurrentPage() {
+        // 立即显示TTS界面
+        ttsService.showTTSInterface = true
+        
         // 这里需要调用ContentView的startReading逻辑
         // 临时解决方案：通过TTS服务获取当前页面文本
         if let getCurrentPage = ttsService.getCurrentPage,
