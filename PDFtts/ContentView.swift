@@ -40,8 +40,8 @@ struct ContentView: View {
                     HStack {
                         Button(action: { sidebarVisible.toggle() }) {
                             Image(systemName: sidebarVisible ? "sidebar.left" : "sidebar.left")
-                                .font(.title2)
-                                .foregroundColor(sidebarVisible ? .blue : .gray)
+                                .font(.title)
+                                .foregroundColor(sidebarVisible ? Color(red: 0.3, green: 0.6, blue: 1.0) : Color(red: 0.6, green: 0.6, blue: 0.6))
                         }
                         
                         Spacer()
@@ -58,15 +58,15 @@ struct ContentView: View {
                                 showUserSettings.toggle()
                             }) {
                                 Image(systemName: "person.circle")
-                                    .font(.title2)
-                                    .foregroundColor(.green)
+                                    .font(.title)
+                                    .foregroundColor(Color(red: 0.2, green: 0.8, blue: 0.5))
                             }
                             .disabled(selectedPDF == nil)
                             
                             // 朗读/暂停按钮
                             Button(action: toggleReading) {
                                 Image(systemName: getReadingButtonIcon())
-                                    .font(.title2)
+                                    .font(.title)
                                     .foregroundColor(getReadingButtonColor())
                             }
                             .disabled(pdfDocument == nil)
@@ -83,8 +83,8 @@ struct ContentView: View {
                             if ttsService.isPlaying || ttsService.isPaused {
                                 Button(action: stopReading) {
                                     Image(systemName: "stop.circle.fill")
-                                        .font(.title2)
-                                        .foregroundColor(.red)
+                                        .font(.title)
+                                        .foregroundColor(Color(red: 1.0, green: 0.3, blue: 0.4))
                                 }
                             }
                             
@@ -186,7 +186,7 @@ struct ContentView: View {
                             VStack(spacing: 16) {
                                 Image(systemName: "doc.text.fill")
                                     .font(.system(size: 48))
-                                    .foregroundColor(.blue)
+                                    .foregroundColor(Color(red: 0.3, green: 0.6, blue: 1.0))
                                 
                                 Text("拖拽PDF文件到此处")
                                     .font(.title2)
@@ -548,11 +548,11 @@ struct ContentView: View {
     
     private func getSleepTimerColor() -> Color {
         if ttsService.sleepTimer > 0 {
-            return .purple
+            return Color(red: 0.7, green: 0.3, blue: 0.9)
         } else if ttsService.showSleepTimer {
-            return .orange
+            return Color(red: 1.0, green: 0.5, blue: 0.2)
         } else {
-            return .gray
+            return Color(red: 0.6, green: 0.6, blue: 0.6)
         }
     }
     
@@ -563,7 +563,7 @@ struct ContentView: View {
     
     // 获取TTS界面启动按钮颜色
     private func getReadingButtonColor() -> Color {
-        return ttsService.showTTSInterface ? .orange : .blue
+        return ttsService.showTTSInterface ? Color(red: 1.0, green: 0.5, blue: 0.2) : Color(red: 0.3, green: 0.6, blue: 1.0)
     }
     
     

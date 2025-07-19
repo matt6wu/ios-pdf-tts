@@ -25,7 +25,7 @@ struct SimpleContentView: View {
                 VStack(spacing: 30) {
                     Image(systemName: "doc.text.fill")
                         .font(.system(size: 80))
-                        .foregroundColor(.blue)
+                        .foregroundColor(Color(red: 0.3, green: 0.6, blue: 1.0))
                     
                     Text("选择一个PDF文件开始阅读")
                         .font(.title2)

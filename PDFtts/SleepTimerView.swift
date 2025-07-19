@@ -19,15 +19,15 @@ struct SleepTimerView: View {
                 VStack(spacing: 8) {
                     HStack {
                         Image(systemName: "clock.fill")
-                            .font(.title2)
-                            .foregroundColor(.purple)
+                            .font(.title)
+                            .foregroundColor(Color(red: 0.7, green: 0.3, blue: 0.9))
                         
                         Spacer()
                         
                         Text(formatTime(ttsService.remainingTime))
                             .font(.title2)
                             .fontWeight(.bold)
-                            .foregroundColor(.purple)
+                            .foregroundColor(Color(red: 0.7, green: 0.3, blue: 0.9))
                     }
                     
                     // 进度条
