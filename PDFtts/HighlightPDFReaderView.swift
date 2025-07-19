@@ -102,8 +102,11 @@ struct HighlightPDFReaderView: UIViewRepresentable {
         //     pdfView.scaleFactor = zoomScale
         // }
         
-        // 更新高亮
-        pdfView.updateHighlight()
+        // 只在文本变化时更新高亮
+        let currentText = ttsService.currentReadingText
+        if pdfView.currentHighlightedText != currentText {
+            pdfView.updateHighlight()
+        }
     }
     
     func makeCoordinator() -> Coordinator {
@@ -176,7 +179,7 @@ struct HighlightPDFReaderView: UIViewRepresentable {
 class HighlightPDFView: PDFView {
     var ttsService: EnhancedTTSService?
     private var highlightOverlay: CALayer?
-    private var currentHighlightedText: String = ""
+    var currentHighlightedText: String = ""
     
     override func awakeFromNib() {
         super.awakeFromNib()
@@ -220,10 +223,19 @@ class HighlightPDFView: PDFView {
     }
     
     private func setupTTSObserver() {
-        // 监听TTS状态变化，每0.5秒检查一次高亮更新
-        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.updateHighlight()
+        // 使用更精确的观察者模式，避免闪烁
+        Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] timer in
+            guard let self = self, let ttsService = self.ttsService else {
+                timer.invalidate()
+                return
+            }
+            
+            let currentText = ttsService.currentReadingText
+            // 只有当文本真正改变时才更新
+            if currentText != self.currentHighlightedText {
+                DispatchQueue.main.async {
+                    self.updateHighlight()
+                }
             }
         }
     }
@@ -245,6 +257,13 @@ class HighlightPDFView: PDFView {
         
         // 获取当前正在朗读的文本
         let currentText = ttsService.currentReadingText
+        
+        // 避免重复更新相同文本
+        if currentText == currentHighlightedText {
+            return
+        }
+        
+        currentHighlightedText = currentText
         
         if !currentText.isEmpty && ttsService.isPlaying {
             highlightCurrentSentence(currentText)
@@ -274,29 +293,114 @@ class HighlightPDFView: PDFView {
         let normalizedText = normalizeText(text)
         let normalizedPageText = normalizeText(pageText)
         
-        // 1. 尝试精确匹配
+        // 1. 尝试精确匹配整个文本
         if let range = normalizedPageText.range(of: normalizedText) {
-            // 将归一化后的范围转换回原始文本的范围
             return convertRangeToOriginal(range, in: normalizedPageText, original: pageText)
         }
         
-        // 2. 尝试部分匹配（取前50个字符）
-        if normalizedText.count > 50 {
-            let partialText = String(normalizedText.prefix(50))
-            if let range = normalizedPageText.range(of: partialText) {
-                return convertRangeToOriginal(range, in: normalizedPageText, original: pageText)
-            }
+        // 2. 尝试匹配文本的开头部分，然后扩展到段落
+        let searchLength = min(normalizedText.count, 100) // 取前100个字符作为搜索起点
+        let searchText = String(normalizedText.prefix(searchLength))
+        
+        if let startRange = normalizedPageText.range(of: searchText) {
+            // 找到起始位置后，尝试扩展到整个段落
+            let startIndex = startRange.lowerBound
+            let expandedRange = expandToParagraph(from: startRange, in: normalizedPageText, originalText: normalizedText)
+            return convertRangeToOriginal(expandedRange, in: normalizedPageText, original: pageText)
         }
         
         // 3. 尝试模糊匹配（移除所有空白符）
         let compactText = normalizedText.replacingOccurrences(of: "\\s+", with: "", options: .regularExpression)
         let compactPageText = normalizedPageText.replacingOccurrences(of: "\\s+", with: "", options: .regularExpression)
         
-        if compactText.count >= 20, let range = compactPageText.range(of: compactText) {
-            return convertRangeToOriginal(range, in: compactPageText, original: pageText)
+        if compactText.count >= 20 {
+            let searchCompactText = String(compactText.prefix(50))
+            if let range = compactPageText.range(of: searchCompactText) {
+                // 在原始文本中扩展到段落
+                let originalRange = convertRangeToOriginal(range, in: compactPageText, original: pageText)
+                if let origRange = originalRange {
+                    let expandedRange = expandToParagraphInOriginal(from: origRange, in: pageText)
+                    return expandedRange
+                }
+            }
         }
         
         return nil
+    }
+    
+    // 扩展到整个段落的辅助函数
+    private func expandToParagraph(from range: Range<String.Index>, in text: String, originalText: String) -> Range<String.Index> {
+        let startIndex = range.lowerBound
+        let endIndex = range.upperBound
+        
+        // 向前扩展到句子开始（寻找句号、换行或段落开始）
+        var expandedStart = startIndex
+        var currentIndex = startIndex
+        while currentIndex > text.startIndex {
+            currentIndex = text.index(before: currentIndex)
+            let char = text[currentIndex]
+            if char == "." || char == "。" || char == "\n" || char == "\r" {
+                expandedStart = text.index(after: currentIndex)
+                break
+            }
+            expandedStart = currentIndex
+        }
+        
+        // 向后扩展：优先匹配原始文本长度，或扩展到段落结束
+        var expandedEnd = endIndex
+        let targetLength = min(originalText.count, 500) // 限制最大高亮长度为500字符
+        let currentLength = text.distance(from: expandedStart, to: endIndex)
+        
+        if currentLength < targetLength {
+            currentIndex = endIndex
+            while currentIndex < text.endIndex && text.distance(from: expandedStart, to: currentIndex) < targetLength {
+                let char = text[currentIndex]
+                expandedEnd = currentIndex
+                if char == "." || char == "。" || char == "\n" || char == "\r" {
+                    // 如果已经接近目标长度，就在句子结束处停止
+                    if text.distance(from: expandedStart, to: currentIndex) > targetLength * 3/4 {
+                        break
+                    }
+                }
+                currentIndex = text.index(after: currentIndex)
+            }
+        }
+        
+        return expandedStart..<expandedEnd
+    }
+    
+    // 在原始文本中扩展到段落
+    private func expandToParagraphInOriginal(from range: NSRange, in text: String) -> NSRange {
+        let nsString = text as NSString
+        let startLocation = max(0, range.location)
+        let endLocation = min(nsString.length, range.location + range.length)
+        
+        // 向前扩展
+        var expandedStart = startLocation
+        for i in stride(from: startLocation, through: 0, by: -1) {
+            let char = nsString.character(at: i)
+            if char == 46 || char == 12290 || char == 10 || char == 13 { // '.', '。', '\n', '\r'
+                expandedStart = i + 1
+                break
+            }
+            expandedStart = i
+        }
+        
+        // 向后扩展（限制在合理范围内）
+        var expandedEnd = endLocation
+        let maxLength = min(500, nsString.length - expandedStart) // 最大扩展500字符
+        for i in endLocation..<min(nsString.length, expandedStart + maxLength) {
+            let char = nsString.character(at: i)
+            expandedEnd = i
+            if char == 46 || char == 12290 || char == 10 || char == 13 { // '.', '。', '\n', '\r'
+                // 如果已经扩展了足够长度，在句子结束处停止
+                if (i - expandedStart) > maxLength * 3/4 {
+                    break
+                }
+            }
+        }
+        
+        return NSRange(location: expandedStart, length: expandedEnd - expandedStart)
     }
     
     private func normalizeText(_ text: String) -> String {
