@@ -51,9 +51,12 @@ struct ReadingProgressView: View {
                             }
                             .padding(.horizontal, 20)
                             .padding(.vertical, 10)
-                            .background(ttsService.selectedLanguage == "zh" ? Color.blue : Color.gray.opacity(0.2))
-                            .foregroundColor(ttsService.selectedLanguage == "zh" ? .white : .primary)
-                            .cornerRadius(8)
+                            .background(ttsService.selectedLanguage == "zh" ? Color(red: 0.3, green: 0.6, blue: 1.0) : Color.clear)
+                            .foregroundColor(ttsService.selectedLanguage == "zh" ? .white : Color(red: 0.7, green: 0.7, blue: 0.7))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(ttsService.selectedLanguage == "zh" ? Color.clear : Color(red: 0.8, green: 0.8, blue: 0.8), lineWidth: 1)
+                            )
                         }
                         
                         Button(action: {
@@ -73,9 +76,12 @@ struct ReadingProgressView: View {
                             }
                             .padding(.horizontal, 20)
                             .padding(.vertical, 10)
-                            .background(ttsService.selectedLanguage == "en" ? Color.blue : Color.gray.opacity(0.2))
-                            .foregroundColor(ttsService.selectedLanguage == "en" ? .white : .primary)
-                            .cornerRadius(8)
+                            .background(ttsService.selectedLanguage == "en" ? Color(red: 0.3, green: 0.6, blue: 1.0) : Color.clear)
+                            .foregroundColor(ttsService.selectedLanguage == "en" ? .white : Color(red: 0.7, green: 0.7, blue: 0.7))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(ttsService.selectedLanguage == "en" ? Color.clear : Color(red: 0.8, green: 0.8, blue: 0.8), lineWidth: 1)
+                            )
                         }
                     }
                 }
@@ -118,7 +124,8 @@ struct ReadingProgressView: View {
                         }
                     }) {
                         Image(systemName: getPlayButtonIcon())
-                            .font(.title)
+                            .font(.title2)
+                            .fontWeight(.light)
                             .foregroundColor(getPlayButtonColor())
                     }
                     
@@ -127,9 +134,10 @@ struct ReadingProgressView: View {
                         Button(action: {
                             ttsService.stopReading()
                         }) {
-                            Image(systemName: "stop.fill")
-                                .font(.title)
-                                .foregroundColor(Color(red: 1.0, green: 0.3, blue: 0.4))
+                            Image(systemName: "stop")
+                                .font(.title2)
+                                .fontWeight(.light)
+                                .foregroundColor(Color(red: 1.0, green: 0.4, blue: 0.4))
                         }
                     }
                     
@@ -137,21 +145,24 @@ struct ReadingProgressView: View {
                     if ttsService.isGeneratingTTS {
                         // TTS生成中 - 动态沙漏图标
                         Image(systemName: "hourglass")
-                            .font(.title)
-                            .foregroundColor(Color(red: 1.0, green: 0.5, blue: 0.2))
+                            .font(.title2)
+                            .fontWeight(.light)
+                            .foregroundColor(Color(red: 0.7, green: 0.7, blue: 0.7))
                             .rotationEffect(.degrees(ttsService.isGeneratingTTS ? 180 : 0))
                             .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: ttsService.isGeneratingTTS)
                     } else if ttsService.isPlaying && !ttsService.isPaused {
                         // 播放中 - 动态音波图标
                         Image(systemName: "waveform")
-                            .font(.title)
+                            .font(.title2)
+                            .fontWeight(.light)
                             .foregroundColor(Color(red: 0.3, green: 0.6, blue: 1.0))
                             .scaleEffect(ttsService.isPlaying ? 1.2 : 1.0)
                             .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: ttsService.isPlaying)
                     } else if ttsService.isPaused {
                         // 暂停中 - 静态暂停图标
-                        Image(systemName: "pause.circle")
-                            .font(.title)
+                        Image(systemName: "pause")
+                            .font(.title2)
+                            .fontWeight(.light)
                             .foregroundColor(Color(red: 1.0, green: 0.5, blue: 0.2))
                     }
                 }
@@ -161,9 +172,10 @@ struct ReadingProgressView: View {
                 // 睡眠定时器显示 - 只在定时器激活时显示
                 if ttsService.sleepTimer > 0 {
                     HStack {
-                        Image(systemName: "clock.fill")
+                        Image(systemName: "clock")
                             .font(.caption)
-                            .foregroundColor(Color(red: 0.7, green: 0.3, blue: 0.9))
+                            .fontWeight(.light)
+                            .foregroundColor(Color(red: 0.7, green: 0.7, blue: 0.7))
                         
                         Text(formatTime(ttsService.remainingTime))
                             .font(.caption)
@@ -182,9 +194,10 @@ struct ReadingProgressView: View {
                         Button(action: {
                             ttsService.goToReadingPage()
                         }) {
-                            Image(systemName: "arrow.up.arrow.down.circle.fill")
-                                .font(.title)
-                                .foregroundColor(Color(red: 0.2, green: 0.8, blue: 0.5))
+                            Image(systemName: "arrow.up.arrow.down")
+                                .font(.title2)
+                                .fontWeight(.light)
+                                .foregroundColor(Color(red: 0.3, green: 0.6, blue: 1.0))
                         }
                         Spacer()
                     }
@@ -500,11 +513,11 @@ struct ReadingProgressView: View {
     
     private func getPlayButtonIcon() -> String {
         if ttsService.isPlaying && ttsService.isPaused {
-            return "play.fill"
+            return "play"
         } else if ttsService.isPlaying {
-            return "pause.fill"
+            return "pause"
         } else {
-            return "play.fill"
+            return "play"
         }
     }
     
@@ -518,7 +531,7 @@ struct ReadingProgressView: View {
         if ttsService.isPlaying && !ttsService.isPaused {
             return Color(red: 1.0, green: 0.5, blue: 0.2)
         } else {
-            return Color(red: 0.3, green: 0.6, blue: 1.0)
+            return Color(red: 0.7, green: 0.7, blue: 0.7)
         }
     }
 }

@@ -23,9 +23,10 @@ struct SimpleContentView: View {
             // 如果没有选择PDF，显示选择界面
             if selectedPDF == nil {
                 VStack(spacing: 30) {
-                    Image(systemName: "doc.text.fill")
+                    Image(systemName: "doc.text")
                         .font(.system(size: 80))
-                        .foregroundColor(Color(red: 0.3, green: 0.6, blue: 1.0))
+                        .fontWeight(.light)
+                        .foregroundColor(Color(red: 0.7, green: 0.7, blue: 0.7))
                     
                     Text("选择一个PDF文件开始阅读")
                         .font(.title2)
@@ -36,15 +37,20 @@ struct SimpleContentView: View {
                         showingDocumentPicker = true
                     }) {
                         HStack {
-                            Image(systemName: "folder.fill")
+                            Image(systemName: "folder")
+                                .fontWeight(.light)
                             Text("选择PDF文件")
+                                .fontWeight(.light)
                         }
                         .font(.headline)
-                        .foregroundColor(.white)
+                        .foregroundColor(Color(red: 0.3, green: 0.6, blue: 1.0))
                         .padding(.horizontal, 30)
                         .padding(.vertical, 15)
-                        .background(Color.blue)
-                        .cornerRadius(10)
+                        .background(Color.clear)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color(red: 0.3, green: 0.6, blue: 1.0), lineWidth: 1)
+                        )
                     }
                     .frame(minWidth: 200, minHeight: 50)
                 }
@@ -62,6 +68,9 @@ struct SimpleContentView: View {
                 Button("重新选择") {
                     selectedPDF = nil
                 }
+                .font(.body)
+                .fontWeight(.light)
+                .foregroundColor(Color(red: 0.7, green: 0.7, blue: 0.7))
                 .padding()
                 
                 Spacer()
@@ -70,10 +79,15 @@ struct SimpleContentView: View {
                     Button("朗读") {
                         // TODO: 实现朗读功能
                     }
+                    .font(.body)
+                    .fontWeight(.light)
                     .padding()
-                    .background(Color.orange)
-                    .foregroundColor(.white)
-                    .cornerRadius(8)
+                    .background(Color.clear)
+                    .foregroundColor(Color(red: 0.3, green: 0.6, blue: 1.0))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color(red: 0.3, green: 0.6, blue: 1.0), lineWidth: 1)
+                    )
                 }
             }
             .padding()

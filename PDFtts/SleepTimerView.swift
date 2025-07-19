@@ -18,9 +18,10 @@ struct SleepTimerView: View {
                 // 显示剩余时间
                 VStack(spacing: 8) {
                     HStack {
-                        Image(systemName: "clock.fill")
-                            .font(.title)
-                            .foregroundColor(Color(red: 0.7, green: 0.3, blue: 0.9))
+                        Image(systemName: "clock")
+                            .font(.title2)
+                            .fontWeight(.light)
+                            .foregroundColor(Color(red: 0.7, green: 0.7, blue: 0.7))
                         
                         Spacer()
                         
@@ -40,17 +41,21 @@ struct SleepTimerView: View {
                         ttsService.cancelSleepTimer()
                     }) {
                         HStack {
-                            Image(systemName: "xmark.circle.fill")
+                            Image(systemName: "xmark")
                                 .font(.caption)
+                                .fontWeight(.light)
                             Text("取消定时器")
                                 .font(.caption)
-                                .fontWeight(.medium)
+                                .fontWeight(.light)
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
-                        .background(Color.red)
-                        .foregroundColor(.white)
-                        .cornerRadius(16)
+                        .background(Color.clear)
+                        .foregroundColor(Color(red: 1.0, green: 0.4, blue: 0.4))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color(red: 1.0, green: 0.4, blue: 0.4), lineWidth: 1)
+                        )
                     }
                 }
                 .padding(16)
@@ -72,18 +77,18 @@ struct SleepTimerView: View {
                                 VStack(spacing: 4) {
                                     Text("\(minutes)")
                                         .font(.title2)
-                                        .fontWeight(.bold)
+                                        .fontWeight(.light)
                                     Text("分钟")
                                         .font(.caption)
+                                        .fontWeight(.light)
                                 }
                                 .padding(.vertical, 12)
                                 .frame(maxWidth: .infinity)
-                                .background(Color.gray.opacity(0.1))
-                                .foregroundColor(.primary)
-                                .cornerRadius(8)
+                                .background(Color.clear)
+                                .foregroundColor(Color(red: 0.7, green: 0.7, blue: 0.7))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 8)
-                                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                                        .stroke(Color(red: 0.8, green: 0.8, blue: 0.8), lineWidth: 1)
                                 )
                             }
                         }

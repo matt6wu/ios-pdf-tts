@@ -39,9 +39,10 @@ struct ContentView: View {
                     // 顶部工具栏
                     HStack {
                         Button(action: { sidebarVisible.toggle() }) {
-                            Image(systemName: sidebarVisible ? "sidebar.left" : "sidebar.left")
-                                .font(.title)
-                                .foregroundColor(sidebarVisible ? Color(red: 0.3, green: 0.6, blue: 1.0) : Color(red: 0.6, green: 0.6, blue: 0.6))
+                            Image(systemName: "sidebar.left")
+                                .font(.title2)
+                                .fontWeight(.light)
+                                .foregroundColor(sidebarVisible ? Color(red: 0.3, green: 0.6, blue: 1.0) : Color(red: 0.7, green: 0.7, blue: 0.7))
                         }
                         
                         Spacer()
@@ -57,41 +58,47 @@ struct ContentView: View {
                             Button(action: {
                                 showUserSettings.toggle()
                             }) {
-                                Image(systemName: "person.circle")
-                                    .font(.title)
-                                    .foregroundColor(Color(red: 0.2, green: 0.8, blue: 0.5))
+                                Image(systemName: "person")
+                                    .font(.title2)
+                                    .fontWeight(.light)
+                                    .foregroundColor(showUserSettings ? Color(red: 0.3, green: 0.6, blue: 1.0) : Color(red: 0.7, green: 0.7, blue: 0.7))
                             }
                             .disabled(selectedPDF == nil)
                             
                             // 朗读/暂停按钮
                             Button(action: toggleReading) {
-                                Image(systemName: getReadingButtonIcon())
-                                    .font(.title)
-                                    .foregroundColor(getReadingButtonColor())
+                                Image(systemName: "speaker.wave.2")
+                                    .font(.title2)
+                                    .fontWeight(.light)
+                                    .foregroundColor(ttsService.showTTSInterface ? Color(red: 0.3, green: 0.6, blue: 1.0) : Color(red: 0.7, green: 0.7, blue: 0.7))
                             }
                             .disabled(pdfDocument == nil)
                             
                             // 睡眠定时器按钮
                             Button(action: toggleSleepTimer) {
-                                Image(systemName: getSleepTimerIcon())
+                                Image(systemName: "clock")
                                     .font(.title2)
-                                    .foregroundColor(getSleepTimerColor())
+                                    .fontWeight(.light)
+                                    .foregroundColor(ttsService.showSleepTimer ? Color(red: 0.3, green: 0.6, blue: 1.0) : Color(red: 0.7, green: 0.7, blue: 0.7))
                             }
                             .disabled(pdfDocument == nil)
                             
                             // 停止按钮
                             if ttsService.isPlaying || ttsService.isPaused {
                                 Button(action: stopReading) {
-                                    Image(systemName: "stop.circle.fill")
-                                        .font(.title)
-                                        .foregroundColor(Color(red: 1.0, green: 0.3, blue: 0.4))
+                                    Image(systemName: "stop")
+                                        .font(.title2)
+                                        .fontWeight(.light)
+                                        .foregroundColor(Color(red: 1.0, green: 0.4, blue: 0.4))
                                 }
                             }
                             
                             // 文件选择按钮
                             Button(action: { showingDocumentPicker = true }) {
-                                Image(systemName: "folder.fill")
+                                Image(systemName: "folder")
                                     .font(.title2)
+                                    .fontWeight(.light)
+                                    .foregroundColor(Color(red: 0.7, green: 0.7, blue: 0.7))
                             }
                         }
                     }
@@ -184,9 +191,10 @@ struct ContentView: View {
                         // 空状态 - 拖拽上传区域
                         VStack(spacing: 30) {
                             VStack(spacing: 16) {
-                                Image(systemName: "doc.text.fill")
+                                Image(systemName: "doc.text")
                                     .font(.system(size: 48))
-                                    .foregroundColor(Color(red: 0.3, green: 0.6, blue: 1.0))
+                                    .fontWeight(.light)
+                                    .foregroundColor(Color(red: 0.7, green: 0.7, blue: 0.7))
                                 
                                 Text("拖拽PDF文件到此处")
                                     .font(.title2)
@@ -199,15 +207,19 @@ struct ContentView: View {
                             
                             Button(action: { showingDocumentPicker = true }) {
                                 HStack {
-                                    Image(systemName: "folder.fill")
+                                    Image(systemName: "folder")
+                                        .fontWeight(.light)
                                     Text("选择文件")
                                 }
                                 .font(.headline)
-                                .foregroundColor(.white)
+                                .foregroundColor(Color(red: 0.3, green: 0.6, blue: 1.0))
                                 .padding(.horizontal, 24)
                                 .padding(.vertical, 12)
-                                .background(Color.blue)
-                                .cornerRadius(8)
+                                .background(Color.clear)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color(red: 0.3, green: 0.6, blue: 1.0), lineWidth: 1)
+                                )
                             }
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -226,6 +238,8 @@ struct ContentView: View {
                             Button(action: previousPage) {
                                 Image(systemName: "chevron.left")
                                     .font(.title2)
+                                    .fontWeight(.light)
+                                    .foregroundColor(currentPage > 1 ? Color(red: 0.7, green: 0.7, blue: 0.7) : Color(red: 0.9, green: 0.9, blue: 0.9))
                             }
                             .disabled(currentPage <= 1)
                             
@@ -240,6 +254,8 @@ struct ContentView: View {
                             Button(action: nextPage) {
                                 Image(systemName: "chevron.right")
                                     .font(.title2)
+                                    .fontWeight(.light)
+                                    .foregroundColor(currentPage < totalPages ? Color(red: 0.7, green: 0.7, blue: 0.7) : Color(red: 0.9, green: 0.9, blue: 0.9))
                             }
                             .disabled(currentPage >= totalPages)
                         }
@@ -538,33 +554,6 @@ struct ContentView: View {
         }
     }
     
-    private func getSleepTimerIcon() -> String {
-        if ttsService.sleepTimer > 0 {
-            return "clock.fill"
-        } else {
-            return "clock"
-        }
-    }
-    
-    private func getSleepTimerColor() -> Color {
-        if ttsService.sleepTimer > 0 {
-            return Color(red: 0.7, green: 0.3, blue: 0.9)
-        } else if ttsService.showSleepTimer {
-            return Color(red: 1.0, green: 0.5, blue: 0.2)
-        } else {
-            return Color(red: 0.6, green: 0.6, blue: 0.6)
-        }
-    }
-    
-    // 获取TTS界面启动按钮图标
-    private func getReadingButtonIcon() -> String {
-        return "speaker.wave.2.fill"  // 始终显示朗读图标，表示启动TTS界面
-    }
-    
-    // 获取TTS界面启动按钮颜色
-    private func getReadingButtonColor() -> Color {
-        return ttsService.showTTSInterface ? Color(red: 1.0, green: 0.5, blue: 0.2) : Color(red: 0.3, green: 0.6, blue: 1.0)
-    }
     
     
     private func previousPage() {
