@@ -225,7 +225,7 @@ struct ContentView: View {
                             handleDrop(providers: providers)
                         }
                         .sheet(isPresented: $showUserSettings) {
-                            UserSettingsView(isPresented: $showUserSettings)
+                            UserSettingsView(isPresented: $showUserSettings, ttsService: ttsService)
                         }
                     }
                     
@@ -648,7 +648,7 @@ struct ContentView: View {
 // 扩展：添加用户设置界面
 extension ContentView {
     var userSettingsSheet: some View {
-        UserSettingsView(isPresented: $showUserSettings)
+        UserSettingsView(isPresented: $showUserSettings, ttsService: ttsService)
     }
 }
 
