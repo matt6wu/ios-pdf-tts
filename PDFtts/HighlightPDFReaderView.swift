@@ -220,6 +220,21 @@ class HighlightPDFView: PDFView {
             name: .PDFViewPageChanged,
             object: self
         )
+        
+        // 监听视图变化通知（缩放、滚动等）
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(viewDidChange),
+            name: .PDFViewVisiblePagesChanged,
+            object: self
+        )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(viewDidChange),
+            name: .PDFViewScaleChanged,
+            object: self
+        )
     }
     
     private func setupTTSObserver() {
@@ -245,6 +260,23 @@ class HighlightPDFView: PDFView {
         // 通知委托
         if let delegate = self.delegate as? HighlightPDFReaderView.Coordinator {
             delegate.pdfViewDidChangePage(self)
+        }
+        
+        // 页面变化时重新计算高亮
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            if let self = self, !self.currentHighlightedText.isEmpty && self.ttsService?.isPlaying == true {
+                self.updateHighlight()
+            }
+        }
+    }
+    
+    @objc private func viewDidChange() {
+        print("📱 PDFView视图变化通知触发")
+        // 视图变化时重新计算高亮位置
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            if let self = self, !self.currentHighlightedText.isEmpty && self.ttsService?.isPlaying == true {
+                self.updateHighlight()
+            }
         }
     }
     
@@ -425,22 +457,50 @@ class HighlightPDFView: PDFView {
         if let selection = selection {
             let bounds = selection.bounds(for: page)
             
+            // 确保边界框有效
+            guard bounds.width > 0 && bounds.height > 0 else {
+                print("⚠️ 无效的高亮边界框: \(bounds)")
+                hideHighlight()
+                return
+            }
+            
             // 将页面坐标转换为视图坐标
             let convertedBounds = convert(bounds, from: page)
+            
+            print("📍 高亮位置 - 页面坐标: \(bounds), 视图坐标: \(convertedBounds)")
             
             // 更新高亮层
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
+                
+                // 确保转换后的坐标仍然有效
+                guard convertedBounds.width > 0 && convertedBounds.height > 0 else {
+                    print("⚠️ 转换后的高亮边界框无效: \(convertedBounds)")
+                    self.hideHighlight()
+                    return
+                }
+                
                 self.highlightOverlay?.frame = convertedBounds
                 self.highlightOverlay?.isHidden = false
                 
-                // 添加动画效果
-                let animation = CABasicAnimation(keyPath: "opacity")
-                animation.fromValue = 0.0
-                animation.toValue = 1.0
-                animation.duration = 0.3
-                self.highlightOverlay?.add(animation, forKey: "fadeIn")
+                // 只在高亮层首次显示或位置显著变化时添加动画
+                if let overlay = self.highlightOverlay {
+                    let previousFrame = overlay.frame
+                    let significantChange = abs(convertedBounds.origin.x - previousFrame.origin.x) > 10 ||
+                                          abs(convertedBounds.origin.y - previousFrame.origin.y) > 10
+                    
+                    if overlay.isHidden || significantChange {
+                        let animation = CABasicAnimation(keyPath: "opacity")
+                        animation.fromValue = 0.0
+                        animation.toValue = 1.0
+                        animation.duration = 0.2
+                        overlay.add(animation, forKey: "fadeIn")
+                    }
+                }
             }
+        } else {
+            print("⚠️ 无法创建文本选择，隐藏高亮")
+            hideHighlight()
         }
     }
     
@@ -454,13 +514,34 @@ class HighlightPDFView: PDFView {
     override func layoutSubviews() {
         super.layoutSubviews()
         
-        // 重新计算高亮位置
-        updateHighlight()
+        // 当视图布局改变时（如缩放、滚动），重新计算高亮位置
+        if !currentHighlightedText.isEmpty && ttsService?.isPlaying == true {
+            updateHighlight()
+        }
     }
     
-    // 简化页面跳转，减少崩溃风险
+    // 重写缩放方法，确保高亮跟随缩放
+    override var scaleFactor: CGFloat {
+        didSet {
+            // 缩放改变时重新计算高亮位置
+            DispatchQueue.main.async { [weak self] in
+                if let self = self, !self.currentHighlightedText.isEmpty && self.ttsService?.isPlaying == true {
+                    self.updateHighlight()
+                }
+            }
+        }
+    }
+    
+    // 重写页面跳转方法，确保高亮跟随页面变化
     override func go(to page: PDFPage) {
         super.go(to: page)
+        
+        // 页面跳转后重新计算高亮位置
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            if let self = self, !self.currentHighlightedText.isEmpty && self.ttsService?.isPlaying == true {
+                self.updateHighlight()
+            }
+        }
     }
 }
 
