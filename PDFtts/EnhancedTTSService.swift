@@ -492,8 +492,8 @@ class EnhancedTTSService: NSObject, ObservableObject {
     
     // 检测文本语言
     private func detectLanguage(text: String) -> Bool {
-        let chineseRange = text.range(of: "\\p{Han}", options: .regularExpression)
-        let englishRange = text.range(of: "[A-Za-z]", options: .regularExpression)
+        let _ = text.range(of: "\\p{Han}", options: .regularExpression)
+        let _ = text.range(of: "[A-Za-z]", options: .regularExpression)
         
         let chineseCount = text.components(separatedBy: CharacterSet(charactersIn: "\\p{Han}")).count - 1
         let englishCount = text.components(separatedBy: CharacterSet.letters.inverted).filter { !$0.isEmpty }.count
@@ -1089,13 +1089,16 @@ class EnhancedTTSService: NSObject, ObservableObject {
         }
         
         // 重置处理状态
-        isProcessing = false
-        isGeneratingTTS = false
-        
-        // 取消睡眠定时器
-        sleepTimerTask?.cancel()
-        sleepTimer = 0
-        remainingTime = 0
+        DispatchQueue.main.async {
+            self.isProcessing = false
+            self.isGeneratingTTS = false
+            
+            // 取消睡眠定时器
+            self.sleepTimerTask?.cancel()
+            self.sleepTimerTask = nil
+            self.sleepTimer = 0
+            self.remainingTime = 0
+        }
         
         // 清空预加载缓存和任务
         preloadedAudioCache.removeAll()

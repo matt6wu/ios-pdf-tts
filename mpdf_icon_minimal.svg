@@ -1,0 +1,8 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景 - 简约蓝色 -->
+  <rect x="0" y="0" width="1024" height="1024" rx="180" ry="180" fill="#1976d2"/>
+  
+  <!-- MPDF 文字 -->
+  <text x="512" y="580" font-family="SF Pro Display, -apple-system, BlinkMacSystemFont, sans-serif" 
+        font-size="220" font-weight="900" text-anchor="middle" fill="white">MPDF</text>
+</svg>

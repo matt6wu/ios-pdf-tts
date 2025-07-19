@@ -326,7 +326,7 @@ struct ContentView: View {
         .sheet(isPresented: $showUserSettings) {
             UserSettingsView(isPresented: $showUserSettings, ttsService: ttsService)
         }
-        .onChange(of: currentPage) { newPage in
+        .onChange(of: currentPage) { _, newPage in
             // 页面变化时保存状态
             print("📖 页面变化: \(newPage)，正在保存状态...")
             saveReadingState()

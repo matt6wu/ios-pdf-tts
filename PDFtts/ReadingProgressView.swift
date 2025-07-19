@@ -103,7 +103,7 @@ struct ReadingProgressView: View {
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .frame(maxWidth: 200)
-                .onChange(of: ttsService.selectedLanguage) { newLanguage in
+                .onChange(of: ttsService.selectedLanguage) { _, newLanguage in
                     print("🔄 UI检测到语言切换: \(newLanguage)")
                 }
                 
@@ -257,7 +257,7 @@ struct ReadingProgressView: View {
                         .background(Color(UIColor.systemBackground))
                         .cornerRadius(8)
                         .shadow(radius: 1)
-                        .onChange(of: ttsService.currentReadingText) { _ in
+                        .onChange(of: ttsService.currentReadingText) { _, _ in
                             // 当文本变化时自动滚动到顶部
                             withAnimation(.easeInOut(duration: 0.3)) {
                                 proxy.scrollTo("textContent", anchor: .top)
@@ -382,7 +382,7 @@ struct ReadingProgressView: View {
                 textBoxHeight = 150 // 临时默认高度
             }
         }
-        .onChange(of: ttsService.currentReadingText) { newText in
+        .onChange(of: ttsService.currentReadingText) { _, newText in
             // 文本第一次出现时（从空文本到有内容），立即设置合适的高度
             if !newText.isEmpty && (textBoxHeight == 0 || textBoxHeight == 150) {
                 let calculatedHeight = calculateTextHeight(for: newText)
@@ -392,7 +392,7 @@ struct ReadingProgressView: View {
                 autoAdjustTextBoxHeight()
             }
         }
-        .onChange(of: ttsService.showTTSInterface) { isShowing in
+        .onChange(of: ttsService.showTTSInterface) { _, isShowing in
             // TTS界面刚显示时，如果有文本内容，立即调整高度
             if isShowing && !ttsService.currentReadingText.isEmpty && (textBoxHeight == 0 || textBoxHeight == 150) {
                 let calculatedHeight = calculateTextHeight(for: formatDisplayText(ttsService.currentReadingText))

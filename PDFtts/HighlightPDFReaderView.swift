@@ -187,12 +187,14 @@ class HighlightPDFView: PDFView {
         super.init(frame: frame)
         setupHighlightOverlay()
         setupPageChangeNotification()
+        setupTTSObserver()
     }
     
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         setupHighlightOverlay()
         setupPageChangeNotification()
+        setupTTSObserver()
     }
     
     private func setupHighlightOverlay() {
@@ -217,6 +219,15 @@ class HighlightPDFView: PDFView {
         )
     }
     
+    private func setupTTSObserver() {
+        // 监听TTS状态变化，每0.5秒检查一次高亮更新
+        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.updateHighlight()
+            }
+        }
+    }
+    
     @objc private func pageDidChange() {
         print("📱 PDFView页面变更通知触发")
         // 通知委托
@@ -230,13 +241,16 @@ class HighlightPDFView: PDFView {
     }
     
     func updateHighlight() {
-        guard ttsService != nil else { return }
+        guard let ttsService = ttsService else { return }
         
-        // 临时禁用高亮功能，后续可以优化
-        hideHighlight()
+        // 获取当前正在朗读的文本
+        let currentText = ttsService.currentReadingText
         
-        // TODO: 实现更精确的文本高亮功能
-        // 目前先专注于基本的TTS功能
+        if !currentText.isEmpty && ttsService.isPlaying {
+            highlightCurrentSentence(currentText)
+        } else {
+            hideHighlight()
+        }
     }
     
     private func highlightCurrentSentence(_ text: String) {
@@ -256,16 +270,48 @@ class HighlightPDFView: PDFView {
     }
     
     private func findTextRange(text: String, in pageText: String, on page: PDFPage) -> NSRange? {
-        let cleanText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let cleanPageText = pageText.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 格式化文本以提高匹配成功率
+        let normalizedText = normalizeText(text)
+        let normalizedPageText = normalizeText(pageText)
         
-        // 查找文本在页面中的位置
-        if let range = cleanPageText.range(of: cleanText) {
-            let nsRange = NSRange(range, in: cleanPageText)
-            return nsRange
+        // 1. 尝试精确匹配
+        if let range = normalizedPageText.range(of: normalizedText) {
+            // 将归一化后的范围转换回原始文本的范围
+            return convertRangeToOriginal(range, in: normalizedPageText, original: pageText)
+        }
+        
+        // 2. 尝试部分匹配（取前50个字符）
+        if normalizedText.count > 50 {
+            let partialText = String(normalizedText.prefix(50))
+            if let range = normalizedPageText.range(of: partialText) {
+                return convertRangeToOriginal(range, in: normalizedPageText, original: pageText)
+            }
+        }
+        
+        // 3. 尝试模糊匹配（移除所有空白符）
+        let compactText = normalizedText.replacingOccurrences(of: "\\s+", with: "", options: .regularExpression)
+        let compactPageText = normalizedPageText.replacingOccurrences(of: "\\s+", with: "", options: .regularExpression)
+        
+        if compactText.count >= 20, let range = compactPageText.range(of: compactText) {
+            return convertRangeToOriginal(range, in: compactPageText, original: pageText)
         }
         
         return nil
+    }
+    
+    private func normalizeText(_ text: String) -> String {
+        return text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\r\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+    }
+    
+    private func convertRangeToOriginal(_ range: Range<String.Index>, in normalized: String, original: String) -> NSRange? {
+        // 简化版本：直接使用归一化文本的范围
+        // 更精确的实现需要追踪字符映射，但对于基本高亮功能这已经足够
+        return NSRange(range, in: normalized)
     }
     
     private func showHighlight(for range: NSRange, on page: PDFPage) {
@@ -317,8 +363,11 @@ class HighlightPDFView: PDFView {
 // PDFPage扩展支持文本选择
 extension PDFPage {
     func selection(for range: NSRange) -> PDFSelection? {
-        guard let pageText = self.string else { return nil }
+        guard let pageText = self.string,
+              range.location >= 0,
+              range.location + range.length <= pageText.count else { return nil }
         
+        // 确保范围有效
         let startIndex = pageText.index(pageText.startIndex, offsetBy: range.location)
         let endIndex = pageText.index(startIndex, offsetBy: range.length)
         let substring = String(pageText[startIndex..<endIndex])
@@ -328,17 +377,32 @@ extension PDFPage {
     }
     
     func selection(for text: String) -> PDFSelection? {
-        // 在页面中查找文本并返回选择
-        // 创建一个简单的选择对象
-        guard let pageText = self.string,
-              let document = self.document else { return nil }
+        guard self.string != nil,
+              !text.isEmpty else { return nil }
         
-        if let range = pageText.range(of: text) {
-            let _ = NSRange(range, in: pageText)
-            // 创建一个基本的选择对象
-            return PDFSelection(document: document)
+        // 尝试在页面中查找文本
+        let selections = self.selections(for: text)
+        
+        // 返回第一个匹配的选择
+        return selections.first
+    }
+    
+    private func selections(for text: String) -> [PDFSelection] {
+        var selections: [PDFSelection] = []
+        
+        // 使用PDFDocument的搜索功能
+        guard let document = self.document else { return selections }
+        
+        let searchOptions: NSString.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
+        let foundSelections = document.findString(text, withOptions: searchOptions)
+        
+        // 过滤出当前页面的选择
+        for selection in foundSelections {
+            if selection.pages.contains(self) {
+                selections.append(selection)
+            }
         }
         
-        return nil
+        return selections
     }
 }

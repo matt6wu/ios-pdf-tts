@@ -1,0 +1,14 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景圆角矩形 - 更现代的蓝色 -->
+  <rect x="0" y="0" width="1024" height="1024" rx="200" ry="200" fill="#007AFF"/>
+  
+  <!-- MPDF 文字 - 居中显示 -->
+  <text x="512" y="600" font-family="SF Pro Display, -apple-system, BlinkMacSystemFont, sans-serif" 
+        font-size="240" font-weight="800" text-anchor="middle" fill="white" letter-spacing="-8">MPDF</text>
+  
+  <!-- 顶部装饰条 -->
+  <rect x="100" y="200" width="824" height="12" rx="6" fill="white" opacity="0.25"/>
+  
+  <!-- 底部装饰条 -->
+  <rect x="100" y="812" width="824" height="12" rx="6" fill="white" opacity="0.25"/>
+</svg>
