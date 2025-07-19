@@ -105,7 +105,7 @@ class EnhancedTTSService: NSObject, ObservableObject {
     
     // 开始预加载下一段（支持跨页面预加载）
     private func startPreloadNext(index: Int) {
-        guard isPlaying && !shouldStop else { return }
+        guard isPlaying && !shouldStop && !isPaused else { return }
         
         // 如果当前页还有下一段，预加载当前页的下一段
         if index < currentSegments.count {
@@ -597,16 +597,15 @@ class EnhancedTTSService: NSObject, ObservableObject {
         for (index, segment) in currentSegments.enumerated() {
             guard isPlaying && !shouldStop else { break }
             
-            await MainActor.run {
-                currentSegmentIndex = index
-                currentReadingText = segment.text
-                readingProgress = Double(index) / Double(totalSegments)
-                
-                // 更新锁屏媒体信息
-                updateNowPlayingInfo()
+            // 如果暂停了，等待恢复
+            while isPaused && !shouldStop {
+                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
             }
             
-            print("🎵 播放第 \(index + 1)/\(totalSegments) 段: \(segment.text.prefix(50))...")
+            // 再次检查是否应该停止
+            guard isPlaying && !shouldStop else { break }
+            
+            print("🎵 准备播放第 \(index + 1)/\(totalSegments) 段: \(segment.text.prefix(50))...")
             
             // 获取当前段音频数据
             var audioData: Data?
@@ -626,9 +625,18 @@ class EnhancedTTSService: NSObject, ObservableObject {
             }
             
             // 开始预加载下一段（顺序控制）
-            startPreloadNext(index: index + 1)
+            if !isPaused && !shouldStop {
+                startPreloadNext(index: index + 1)
+            }
             
             if let audioData = audioData {
+                // 只有在真正开始播放音频时才更新文本显示
+                await MainActor.run {
+                    currentSegmentIndex = index
+                    currentReadingText = segment.text
+                    readingProgress = Double(index) / Double(totalSegments)
+                }
+                
                 await playAudioData(audioData)
             } else {
                 print("❌ API调用失败，跳过此段: \(segment.text.prefix(50))...")
@@ -997,7 +1005,7 @@ class EnhancedTTSService: NSObject, ObservableObject {
             if player.play() {
                 print("✅ 音频播放开始")
                 // 确保媒体信息在音频播放时更新
-                DispatchQueue.main.async {
+                await MainActor.run {
                     self.updateNowPlayingInfo()
                 }
             } else {
@@ -1016,7 +1024,19 @@ class EnhancedTTSService: NSObject, ObservableObject {
         var timeoutCount = 0
         let maxTimeout = 600 // 60秒超时 (600 * 100ms)
         
-        while let player = audioPlayer, player.isPlaying && !shouldStop && timeoutCount < maxTimeout {
+        while let player = audioPlayer, !shouldStop && timeoutCount < maxTimeout {
+            // 如果暂停了，等待恢复播放
+            if isPaused {
+                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                timeoutCount += 1
+                continue
+            }
+            
+            // 检查是否还在播放
+            if !player.isPlaying {
+                break // 音频自然播放结束
+            }
+            
             try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
             timeoutCount += 1
             
