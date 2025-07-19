@@ -127,15 +127,16 @@ struct PDFThumbnailSidebar: View {
     }
     
     private func generateThumbnail(for page: PDFPage) async -> UIImage {
+        // 在主线程获取页面信息，避免Sendable问题
+        let pageSize = page.bounds(for: .mediaBox)
+        let scale: CGFloat = 150.0 / max(pageSize.width, pageSize.height)
+        let scaledSize = CGSize(
+            width: pageSize.width * scale,
+            height: pageSize.height * scale
+        )
+        
         return await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async { [page] in
-                let pageSize = page.bounds(for: .mediaBox)
-                let scale: CGFloat = 150.0 / max(pageSize.width, pageSize.height)
-                let scaledSize = CGSize(
-                    width: pageSize.width * scale,
-                    height: pageSize.height * scale
-                )
-                
+            DispatchQueue.global(qos: .userInitiated).async {
                 let renderer = UIGraphicsImageRenderer(size: scaledSize)
                 let image = renderer.image { context in
                     context.cgContext.setFillColor(UIColor.white.cgColor)
@@ -145,12 +146,15 @@ struct PDFThumbnailSidebar: View {
                     context.cgContext.translateBy(x: 0, y: scaledSize.height)
                     context.cgContext.scaleBy(x: scale, y: -scale)
                     
-                    page.draw(with: .mediaBox, to: context.cgContext)
+                    // 在后台线程中绘制页面
+                    DispatchQueue.main.sync {
+                        page.draw(with: .mediaBox, to: context.cgContext)
+                    }
                     context.cgContext.restoreGState()
                 }
                 
                 continuation.resume(returning: image)
-            }
+            } 
         }
     }
 }

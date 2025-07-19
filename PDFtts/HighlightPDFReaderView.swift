@@ -182,6 +182,9 @@ class HighlightPDFView: PDFView {
     private var highlightOverlay: CALayer?
     var currentHighlightedText: String = ""
     private var highlightUpdateTimer: Timer? // 延迟更新定时器
+    var autoScrollToHighlight: Bool = true // 控制是否自动滚动到高亮位置
+    var autoResetZoomAndCenter: Bool = true // 新段落时重置缩放并居中
+    private let defaultZoomScale: CGFloat = 1.0 // 默认缩放比例（适合阅读的舒适比例）
     
     override func awakeFromNib() {
         super.awakeFromNib()
@@ -305,11 +308,18 @@ class HighlightPDFView: PDFView {
             return
         }
         
+        let isNewSegment = !currentHighlightedText.isEmpty && currentText != currentHighlightedText
         currentHighlightedText = currentText
         
         if !currentText.isEmpty && ttsService.isPlaying {
             print("🎯 更新高亮到新文本: \(currentText.prefix(30))...")
-            highlightCurrentSentence(currentText)
+            
+            // 如果是新段落且启用了自动重置，先重置缩放和位置
+            if isNewSegment && autoResetZoomAndCenter {
+                resetZoomAndCenterHighlight(text: currentText)
+            } else {
+                highlightCurrentSentence(currentText)
+            }
         } else {
             hideHighlight()
         }
@@ -325,6 +335,90 @@ class HighlightPDFView: PDFView {
             highlightCurrentSentence(currentText)
         } else {
             hideHighlight()
+        }
+    }
+    
+    // 重置缩放并居中高亮
+    private func resetZoomAndCenterHighlight(text: String) {
+        print("🔄 新段落开始：重置缩放并居中高亮")
+        
+        // 先设置固定缩放比例
+        UIView.animate(withDuration: 0.5, animations: {
+            self.scaleFactor = self.defaultZoomScale
+        }) { _ in
+            // 缩放完成后，查找文本位置并居中
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                self.highlightAndCenterText(text)
+            }
+        }
+    }
+    
+    // 高亮文本并居中显示
+    private func highlightAndCenterText(_ text: String) {
+        guard !text.isEmpty,
+              let currentPage = self.currentPage,
+              let pageText = currentPage.string else {
+            hideHighlight()
+            return
+        }
+        
+        // 查找文本范围
+        if let textRange = findTextRange(text: text, in: pageText, on: currentPage) {
+            // 获取文本选择和边界
+            if let selection = currentPage.selection(for: textRange) {
+                let bounds = selection.bounds(for: currentPage)
+                let convertedBounds = convert(bounds, from: currentPage)
+                
+                // 更新高亮显示
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    self.highlightOverlay?.frame = convertedBounds
+                    self.highlightOverlay?.isHidden = false
+                    
+                    // 将高亮区域居中显示
+                    self.centerHighlightInView(highlightFrame: convertedBounds)
+                    
+                    // 添加动画效果
+                    let animation = CABasicAnimation(keyPath: "opacity")
+                    animation.fromValue = 0.0
+                    animation.toValue = 1.0
+                    animation.duration = 0.3
+                    self.highlightOverlay?.add(animation, forKey: "fadeIn")
+                }
+            }
+        } else {
+            hideHighlight()
+        }
+    }
+    
+    // 将高亮区域居中显示在屏幕中
+    private func centerHighlightInView(highlightFrame: CGRect) {
+        let viewBounds = self.bounds
+        let viewCenter = CGPoint(x: viewBounds.midX, y: viewBounds.midY)
+        let highlightCenter = CGPoint(x: highlightFrame.midX, y: highlightFrame.midY)
+        
+        // 计算需要滚动的偏移量，使高亮居中
+        let offsetX = highlightCenter.x - viewCenter.x
+        let offsetY = highlightCenter.y - viewCenter.y
+        
+        // 查找内部的滚动视图并调整位置
+        for subview in self.subviews {
+            if let scrollView = subview as? UIScrollView {
+                let currentOffset = scrollView.contentOffset
+                let targetOffset = CGPoint(
+                    x: currentOffset.x + offsetX,
+                    y: currentOffset.y + offsetY
+                )
+                
+                print("🎯 居中高亮: 当前偏移 \(currentOffset) → 目标偏移 \(targetOffset)")
+                
+                UIView.animate(withDuration: 0.8, delay: 0, options: [.curveEaseInOut], animations: {
+                    scrollView.setContentOffset(targetOffset, animated: false)
+                }, completion: { _ in
+                    print("✅ 高亮居中完成")
+                })
+                break
+            }
         }
     }
     
@@ -507,6 +601,11 @@ class HighlightPDFView: PDFView {
                 self.highlightOverlay?.frame = convertedBounds
                 self.highlightOverlay?.isHidden = false
                 
+                // 检查高亮是否在可视区域内，如果不在则自动滚动（如果启用且不是居中模式）
+                if self.autoScrollToHighlight && !self.autoResetZoomAndCenter {
+                    self.ensureHighlightVisible(highlightFrame: convertedBounds)
+                }
+                
                 // 只在高亮层首次显示或位置显著变化时添加动画
                 if let overlay = self.highlightOverlay {
                     let previousFrame = overlay.frame
@@ -532,6 +631,56 @@ class HighlightPDFView: PDFView {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.highlightOverlay?.isHidden = true
+        }
+    }
+    
+    // 确保高亮区域在可视范围内
+    private func ensureHighlightVisible(highlightFrame: CGRect) {
+        let visibleRect = self.bounds // 使用视图边界
+        let margin: CGFloat = 100 // 边距
+        
+        // 检查高亮是否基本在可视区域内（允许部分超出）
+        let expandedVisible = visibleRect.insetBy(dx: -margin, dy: -margin)
+        if expandedVisible.intersects(highlightFrame) && 
+           highlightFrame.minY >= visibleRect.minY - margin &&
+           highlightFrame.maxY <= visibleRect.maxY + margin {
+            print("✅ 高亮在可视区域内")
+            return
+        }
+        
+        print("📍 高亮超出可视区域，自动滚动")
+        print("   可视区域: \(visibleRect)")
+        print("   高亮区域: \(highlightFrame)")
+        
+        // 计算目标矩形，确保高亮在视图中央偏上位置
+        let targetRect = CGRect(
+            x: max(0, highlightFrame.origin.x - 50), // 左边距
+            y: max(0, highlightFrame.origin.y - visibleRect.height * 0.3), // 放在视图上方30%位置
+            width: min(visibleRect.width, highlightFrame.width + 100), // 适当宽度
+            height: min(visibleRect.height, highlightFrame.height + 200) // 适当高度
+        )
+        
+        print("🔄 滚动到目标区域: \(targetRect)")
+        
+        // 使用平滑滚动 - 调用父类UIScrollView的方法
+        DispatchQueue.main.async {
+            // 查找内部的滚动视图并滚动
+            for subview in self.subviews {
+                if let scrollView = subview as? UIScrollView {
+                    let currentOffset = scrollView.contentOffset
+                    let targetOffset = CGPoint(
+                        x: targetRect.origin.x,
+                        y: targetRect.origin.y
+                    )
+                    
+                    UIView.animate(withDuration: 0.6, delay: 0, options: [.curveEaseInOut], animations: {
+                        scrollView.setContentOffset(targetOffset, animated: false)
+                    }, completion: { _ in
+                        print("✅ 自动滚动完成")
+                    })
+                    break
+                }
+            }
         }
     }
     
