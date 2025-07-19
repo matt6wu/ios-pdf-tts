@@ -102,9 +102,10 @@ struct HighlightPDFReaderView: UIViewRepresentable {
         //     pdfView.scaleFactor = zoomScale
         // }
         
-        // 只在文本变化时更新高亮
+        // 文本变化时立即更新高亮位置（不延迟）
         let currentText = ttsService.currentReadingText
         if pdfView.currentHighlightedText != currentText {
+            print("🎵 新段落播放，立即更新高亮位置")
             pdfView.updateHighlight()
         }
     }
@@ -180,6 +181,7 @@ class HighlightPDFView: PDFView {
     var ttsService: EnhancedTTSService?
     private var highlightOverlay: CALayer?
     var currentHighlightedText: String = ""
+    private var highlightUpdateTimer: Timer? // 延迟更新定时器
     
     override func awakeFromNib() {
         super.awakeFromNib()
@@ -246,8 +248,9 @@ class HighlightPDFView: PDFView {
             }
             
             let currentText = ttsService.currentReadingText
-            // 只有当文本真正改变时才更新
+            // 只有当文本真正改变时才立即更新（文本变化时不延迟）
             if currentText != self.currentHighlightedText {
+                print("⏰ Timer检测到文本变化，立即更新高亮")
                 DispatchQueue.main.async {
                     self.updateHighlight()
                 }
@@ -265,23 +268,30 @@ class HighlightPDFView: PDFView {
         // 页面变化时重新计算高亮
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             if let self = self, !self.currentHighlightedText.isEmpty && self.ttsService?.isPlaying == true {
-                self.updateHighlight()
+                self.forceUpdateHighlightPosition()
             }
         }
     }
     
     @objc private func viewDidChange() {
         print("📱 PDFView视图变化通知触发")
-        // 视图变化时重新计算高亮位置
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            if let self = self, !self.currentHighlightedText.isEmpty && self.ttsService?.isPlaying == true {
-                self.updateHighlight()
+        // 取消之前的定时器
+        highlightUpdateTimer?.invalidate()
+        
+        // 设置1秒延迟后重新计算高亮
+        highlightUpdateTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
+            DispatchQueue.main.async {
+                if let self = self, !self.currentHighlightedText.isEmpty && self.ttsService?.isPlaying == true {
+                    print("🔄 延迟重新计算高亮位置")
+                    self.forceUpdateHighlightPosition()
+                }
             }
         }
     }
     
     deinit {
         NotificationCenter.default.removeObserver(self)
+        highlightUpdateTimer?.invalidate() // 清理定时器
     }
     
     func updateHighlight() {
@@ -298,6 +308,20 @@ class HighlightPDFView: PDFView {
         currentHighlightedText = currentText
         
         if !currentText.isEmpty && ttsService.isPlaying {
+            print("🎯 更新高亮到新文本: \(currentText.prefix(30))...")
+            highlightCurrentSentence(currentText)
+        } else {
+            hideHighlight()
+        }
+    }
+    
+    // 强制更新高亮位置（用于视图变化后重新定位）
+    func forceUpdateHighlightPosition() {
+        guard let ttsService = ttsService else { return }
+        let currentText = ttsService.currentReadingText
+        
+        if !currentText.isEmpty && ttsService.isPlaying {
+            print("🔄 强制重新定位高亮位置")
             highlightCurrentSentence(currentText)
         } else {
             hideHighlight()
@@ -514,19 +538,36 @@ class HighlightPDFView: PDFView {
     override func layoutSubviews() {
         super.layoutSubviews()
         
-        // 当视图布局改变时（如缩放、滚动），重新计算高亮位置
+        // 当视图布局改变时，延迟重新计算高亮位置
         if !currentHighlightedText.isEmpty && ttsService?.isPlaying == true {
-            updateHighlight()
+            // 取消之前的定时器
+            highlightUpdateTimer?.invalidate()
+            
+            // 延迟0.5秒重新计算（layoutSubviews调用频繁，使用较短延迟）
+            highlightUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+                DispatchQueue.main.async {
+                    if let self = self, !self.currentHighlightedText.isEmpty && self.ttsService?.isPlaying == true {
+                        print("📐 布局完成，延迟重新计算高亮位置")
+                        self.forceUpdateHighlightPosition()
+                    }
+                }
+            }
         }
     }
     
     // 重写缩放方法，确保高亮跟随缩放
     override var scaleFactor: CGFloat {
         didSet {
-            // 缩放改变时重新计算高亮位置
-            DispatchQueue.main.async { [weak self] in
-                if let self = self, !self.currentHighlightedText.isEmpty && self.ttsService?.isPlaying == true {
-                    self.updateHighlight()
+            // 取消之前的定时器
+            highlightUpdateTimer?.invalidate()
+            
+            // 缩放改变时延迟1秒重新计算高亮位置
+            highlightUpdateTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
+                DispatchQueue.main.async {
+                    if let self = self, !self.currentHighlightedText.isEmpty && self.ttsService?.isPlaying == true {
+                        print("🔍 缩放完成，延迟重新计算高亮位置")
+                        self.forceUpdateHighlightPosition()
+                    }
                 }
             }
         }
@@ -539,7 +580,7 @@ class HighlightPDFView: PDFView {
         // 页面跳转后重新计算高亮位置
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             if let self = self, !self.currentHighlightedText.isEmpty && self.ttsService?.isPlaying == true {
-                self.updateHighlight()
+                self.forceUpdateHighlightPosition()
             }
         }
     }
